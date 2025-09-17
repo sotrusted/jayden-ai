@@ -1,0 +1,15 @@
+{
+    "include": ["src"],
+    "exclude": ["**/__pycache__", "**/migrations/**"],
+    "venvPath": ".",
+    "venv": ".venv",
+    "executionEnvironments": [
+      {
+        "root": ".",
+        "extraPaths": ["."]
+      }
+    ],
+    "reportMissingImports": true,
+    "reportMissingTypeStubs": false
+  }
+  
