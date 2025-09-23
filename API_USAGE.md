@@ -14,7 +14,7 @@ Get your API key from: https://console.groq.com/
 ### 2. Start the Server
 
 ```bash
-uv run uvicorn src.spite_ai.api:app --host 0.0.0.0 --port 8000
+uv run uvicorn src.spite_ai.api_simple:app --host 0.0.0.0 --port 8080
 ```
 
 The server will start and load:
@@ -82,6 +82,76 @@ Generate a response using RAG over Spite Magazine corpus.
 ```json
 {
   "response": "string"         // Generated response from Spite AI
+}
+```
+
+### POST /chat/stream
+Generate a streaming response using RAG over Spite Magazine corpus. This endpoint returns a Server-Sent Events (SSE) stream that can be listened to for real-time response generation.
+
+**Request Body:**
+```json
+{
+  "query": "string",           // Required: Your question
+  "chat_history": "string",    // Optional: Previous conversation
+  "k": "int",                  // Optional: Number of passages to retrieve
+  "similarity_threshold": "float" // Optional: Minimum similarity score
+}
+```
+
+**Response:**
+Server-Sent Events stream with `Content-Type: text/event-stream`. Each event contains:
+```
+data: {"content": "partial response text"}
+
+data: {"content": "more response text"}
+
+data: {"done": true}
+```
+
+**Example Usage:**
+```bash
+curl -X POST http://localhost:8080/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Who is Jayden?",
+    "chat_history": ""
+  }' \
+  --no-buffer
+```
+
+**JavaScript Example:**
+```javascript
+const response = await fetch('http://localhost:8080/chat/stream', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    query: 'Who is Jayden?',
+    chat_history: ''
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  const chunk = decoder.decode(value);
+  const lines = chunk.split('\n');
+  
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = JSON.parse(line.slice(6));
+      if (data.content) {
+        console.log(data.content);
+      } else if (data.done) {
+        console.log('Stream finished');
+      }
+    }
+  }
 }
 ```
 

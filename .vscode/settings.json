@@ -1,6 +1,11 @@
 {
     "python.defaultInterpreterPath": ".venv/bin/python3",
     "python.envFile": "${workspaceFolder}/.env",
-    "python.analysis.extraPaths": ["."]
+    "python.analysis.extraPaths": [
+      "."
+    ],
+    "cursorpyright.analysis.extraPaths": [
+      "."
+    ]
   }
   

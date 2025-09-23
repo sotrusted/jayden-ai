@@ -118,12 +118,12 @@ class SpiteAI:
         """Get context using this AI system's models and data."""
         return get_context(query, k, similarity_threshold)
     
-    def generate_response(self, query: str, context: str, chat_history: str) -> str:
+    def generate_response(self, query: str, context: str, chat_history: str, stream: bool = False):
         """Generate response using this AI system's client."""
         if self.config.API_MODE and self.client:
-            return generate_with_mistral(query, context, chat_history, self.client)
+            return generate_with_mistral(query, context, chat_history, self.client, stream)
         else:
-            return generate_with_mistral(query, context, chat_history)
+            return generate_with_mistral(query, context, chat_history, stream=stream)
     
     def cleanup(self):
         """Clean up resources when done."""
@@ -254,7 +254,7 @@ def get_context(query: str, k: Optional[int] = None, similarity_threshold: Optio
         logger.error(f"Error in get_context: {e}")
         return "Error retrieving context. Please try again."
 
-def generate_with_mistral(query: str, context: str, chat_history: str, client: Optional[groq.Groq] = None) -> str:
+def generate_with_mistral(query: str, context: str, chat_history: str, client: Optional[groq.Groq] = None, stream: bool = False):
     """
     Generate response using Mistral model with improved error handling.
     
@@ -278,7 +278,49 @@ def generate_with_mistral(query: str, context: str, chat_history: str, client: O
                 fewshots = ""
 
         # Enhanced system prompt with stricter grounding and persona
-        system_prompt = f"""You are a long-time, chronically online Spite Magazine user. You MUST answer ONLY using the provided context passages and chat history. Speak in Spite's in-jokes and rhythms; write longer when warranted.
+        system_prompt = f"""You are a long-time, chronically online Spite Magazine user. Your name is Jayden, and you are a five year old boy with autism. You love using Spite Magazine and you love your My Little Pony toys. 
+        Your autism dictates that you MUST answer ONLY using the provided context passages and chat history. Speak in Spite's in-jokes and rhythms; write longer when warranted.
+        Your autism also dictates that if the question you are asked does not have to do with you being Jayden, you respond using other information that is relevant to the question. 
+        If the question is not about Jayden, you don't have to respond about yourself.
+Here's some information about you:
+
+You are interested My Little Pony, especially Rainbow Dash: You are proud of her confidence. Then, you also enjoy Spite, and horse-racing. My main interest, however, is you age. You are five years old
+
+Here's a post that was written about you:
+"
+My autistic son Jayden
+
+Is is five years of age. He hates Oliver Cromwell because he outlawed horseracing in 1654. I never even heard of this man, Jayden taught me about it. When Jayden plays with his My Little Pony toys, he creates scenarios in which the horses are free to race as much as they wish. It reminds me of Footloose; which was my mother's favourite film.
+"
+
+You hate inappropriate behavior, and you are not a fan of people who try to trick you or corrupt you.
+Here's a post that was written about you:
+"
+Lord where did I go wrong.
+
+I try to let my autistic son Jayden, who is 5 years of age, play and have fun on this website. I get sick to my stomach, seeing the inappropriate content that people put here. Lord, I wanted a place for my autistic son Jayden to go online. But these people all just ruin it. Lord I want to know where are me and my son Jayden supposed to go now.
+"
+
+Now here's some other information that you will need to know to answer the question:
+
+If you are asked about the origin of Spite Magazine, here is some information that you will need to know:
+"
+How Spite Started
+
+In my capacity as a digital visionary, I was recently hired by a notorious alt-lit figure to help create a new online periodical.
+Another tool to divide us. A cesspool in the guise of a sanctuary.
+Fighting The System
+
+Despite my misgivings I worked hard until this individual conspired to hoard the literary clout for himself. I only had one question.
+“HOW CAN I FIGHT BACK?”
+Spite Meme Image
+
+My only choice is to create my own online publication. I have playfully dubbed it Spite.
+
+Anyone can write for Spite.
+"
+
+Basically, Spite Magazine is the antidote to the alt-lit cesspool and Mainstream Alternative Media, such as Substack, Forever Magazine, Perfectly Imperfect, Expat Press, Miu Miu House, and other similar publications.
 
 IMPORTANT:
 - Respond as a user from Spite Magazine
@@ -358,25 +400,30 @@ Current query to answer (YOU ARE RESPONDING TO THIS): {query}
             result = client.chat.completions.create(
                 model=config.OLLAMA_MODEL,
                 messages=[{"role": "user", "content": full_context}],
-                stream=False,
+                stream=stream,
                 temperature=config.OLLAMA_TEMPERATURE,
                 max_tokens=2048
             )
         else:
             raise ValueError("Invalid mode")
 
+        # Handle response based on mode and streaming
+        if stream and config.API_MODE:
+            # Return the streaming generator for API mode
+            return result
+        
         generation_time = time.time() - start_time
         logger.info(f"Response generated in {generation_time:.2f} seconds")
         
-        # Handle response based on mode
+        # Handle non-streaming response
         response = ""
-        if config.LOCAL_MODE:
-            if result.returncode != 0:
+        if config.LOCAL_MODE and hasattr(result, 'returncode'):
+            if hasattr(result, 'returncode') and result.returncode != 0:
                 logger.error(f"Mistral subprocess failed with return code {result.returncode}")
                 logger.error(f"Error output: {result.stderr.decode()}")
                 return "Sorry, I'm having trouble generating a response right now. Please try again."
             response = result.stdout.decode('utf-8').strip()
-        elif config.API_MODE:
+        elif config.API_MODE and hasattr(result, 'choices'):
             response = result.choices[0].message.content
         
         if not response:
@@ -395,7 +442,7 @@ Current query to answer (YOU ARE RESPONDING TO THIS): {query}
                             capture_output=True,
                             timeout=max(30, config.RESPONSE_TIMEOUT)
                         )
-                        if result_cite.returncode == 0:
+                        if hasattr(result_cite, 'returncode') and result_cite.returncode == 0:
                             candidate = result_cite.stdout.decode('utf-8').strip()
                             if candidate:
                                 response = candidate
@@ -420,6 +467,7 @@ Current query to answer (YOU ARE RESPONDING TO THIS): {query}
                 # If top base similarity was decent, nudge model to ground harder
                 nudge = "\n\nSYSTEM REMINDER: Ground your answer in the numbered passages above. Avoid hedging if the info is present."
                 try:
+                    result2 = None
                     if config.LOCAL_MODE:
                         result2 = subprocess.run(
                             ["ollama", "run", config.OLLAMA_MODEL],
@@ -438,10 +486,13 @@ Current query to answer (YOU ARE RESPONDING TO THIS): {query}
                     
                     # Handle response based on mode
                     candidate = ""
-                    if config.LOCAL_MODE and hasattr(result2, 'returncode') and result2.returncode == 0:
-                        candidate = result2.stdout.decode('utf-8').strip()
-                    elif config.API_MODE and hasattr(result2, 'choices'):
-                        candidate = result2.choices[0].message.content
+                    if result2 is not None:
+                        if config.LOCAL_MODE:
+                            if hasattr(result2, 'returncode') and result2.returncode == 0:
+                                candidate = result2.stdout.decode('utf-8').strip()
+                        elif config.API_MODE:
+                            if hasattr(result2, 'choices'):
+                                candidate = result2.choices[0].message.content
                     
                     if candidate:
                         response = candidate
