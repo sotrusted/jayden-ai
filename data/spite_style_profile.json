@@ -1,0 +1,158 @@
+{
+  "avg_sentence_length": 12.14886440842473,
+  "sentence_std": 13.86870323521289,
+  "sentiment_mean": 0.033035356472493164,
+  "sentiment_std": 0.28055923512882724,
+  "common_phrases": [
+    [
+      "james aaronson",
+      1084
+    ],
+    [
+      "spite bucharest",
+      569
+    ],
+    [
+      "peter vack",
+      528
+    ],
+    [
+      "feel like",
+      483
+    ],
+    [
+      "dimes square",
+      349
+    ],
+    [
+      "new york",
+      338
+    ],
+    [
+      "alex bienstock",
+      288
+    ],
+    [
+      "spite magazine",
+      287
+    ],
+    [
+      "spite admin",
+      242
+    ],
+    [
+      "spite transylvania",
+      202
+    ],
+    [
+      "look like",
+      195
+    ],
+    [
+      "spite janitor",
+      185
+    ],
+    [
+      "spite reading",
+      162
+    ],
+    [
+      "feels like",
+      148
+    ],
+    [
+      "spite vegas",
+      135
+    ],
+    [
+      "looks like",
+      129
+    ],
+    [
+      "open secret",
+      126
+    ],
+    [
+      "spite nazbol",
+      126
+    ],
+    [
+      "spite chaser",
+      123
+    ],
+    [
+      "sounds like",
+      122
+    ]
+  ],
+  "response_styles": {
+    "brief": 32520,
+    "questioning": 5744,
+    "ironic": 1747,
+    "emphatic": 2013
+  },
+  "topics": [
+    [
+      "spite",
+      "love",
+      "post",
+      "ok",
+      "art",
+      "new",
+      "bucharest",
+      "posts",
+      "reading"
+    ],
+    [
+      "im",
+      "sex",
+      "ur",
+      "women",
+      "peter",
+      "fat",
+      "sorry",
+      "support",
+      "vack"
+    ],
+    [
+      "like",
+      "just",
+      "time",
+      "said",
+      "way",
+      "life",
+      "got",
+      "night",
+      "world"
+    ],
+    [
+      "james",
+      "aaronson",
+      "girl",
+      "josh",
+      "man",
+      "god",
+      "oh",
+      "guy",
+      "going"
+    ],
+    [
+      "like",
+      "just",
+      "im",
+      "dont",
+      "know",
+      "want",
+      "fuck",
+      "fucking",
+      "people"
+    ]
+  ],
+  "initial_corpus_size": 60618,
+  "posts_after_spam_filter": 60476,
+  "posts_after_dedupe": 49595,
+  "spam_filtered_posts": 142,
+  "near_duplicate_removed_posts": 10881,
+  "skipped_long_posts": 0,
+  "total_posts_analyzed": 48213
+}

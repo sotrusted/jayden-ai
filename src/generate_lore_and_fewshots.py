@@ -13,6 +13,7 @@ transformers sentiment to summarize style and recurring memes.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -35,21 +36,14 @@ try:
 except Exception:  # transformers optional
     pipeline = None
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.spite_ai.config import Config
-
-config = Config.from_env()
-
-CORPUS_PATH = config.CORPUS_PATH
-LOREBOOK_PATH = config.LOREBOOK_PATH
-FEWSHOTS_PATH = config.FEWSHOT_PATH
+DEFAULT_CORPUS_PATH = "data/spite_corpus.json"
+DEFAULT_LOREBOOK_PATH = "data/spite_lorebook.json"
+DEFAULT_FEWSHOTS_PATH = "data/spite_fewshots.txt"
 
 # Heuristic slang/alias seeds
 SLANG_SEED = {
     "schizo", "bit", "canon", "admin", "dimes", "dimes square", "bucharest",
-    "spite",  "vack", "vegas", "reading", "transylvania",
+    "spite", "nazbol", "vack", "vegas", "reading", "transylvania", "goon",
 }
 ALIASES_SEED = {
     "jayden": ["jaden", "child of prophecy"],
@@ -81,6 +75,121 @@ def load_corpus(path: str) -> List[str]:
         if not isinstance(data, list):
             raise ValueError("Corpus must be a JSON list of strings")
         return [str(x) for x in data]
+
+
+def is_repetitive_spam(text: str, *, top_token_ratio: float = 0.35, unique_ratio: float = 0.45,
+                       bigram_ratio: float = 0.25) -> bool:
+    """Detect extremely repetitive posts that drown out organic topics."""
+    words = re.findall(r"[a-zA-Z']+", text.lower())
+    if len(words) < 12:
+        return False
+
+    total = len(words)
+    unigram_counts = Counter(words)
+    most_common_unigram = unigram_counts.most_common(1)[0][1] / total
+    unique_unigram_ratio = len(unigram_counts) / total
+    if most_common_unigram >= top_token_ratio and unique_unigram_ratio <= unique_ratio:
+        return True
+
+    # Catch repeated phrases like "peter vack" x N
+    bigram_total = max(total - 1, 1)
+    bigram_counts = Counter(zip(words, words[1:]))
+    if bigram_counts:
+        top_bigram = bigram_counts.most_common(1)[0][1] / bigram_total
+        if top_bigram >= bigram_ratio:
+            return True
+
+    return False
+
+
+def filter_spammy_docs(corpus: List[str]) -> Tuple[List[str], int]:
+    filtered: List[str] = []
+    removed = 0
+    for doc in corpus:
+        if is_repetitive_spam(doc):
+            removed += 1
+            continue
+        filtered.append(doc)
+    return filtered, removed
+
+
+def tokenize_words(text: str) -> List[str]:
+    return re.findall(r"[a-zA-Z']+", text.lower())
+
+
+def simhash_signature(tokens: List[str], bits: int = 64) -> int:
+    if not tokens:
+        return 0
+    vector = [0] * bits
+    counts = Counter(tokens)
+    for token, weight in counts.items():
+        digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+        h = int.from_bytes(digest, "big")
+        for i in range(bits):
+            mask = 1 << i
+            if h & mask:
+                vector[i] += weight
+            else:
+                vector[i] -= weight
+    fingerprint = 0
+    for i, value in enumerate(vector):
+        if value > 0:
+            fingerprint |= 1 << i
+    return fingerprint
+
+
+def hamming_distance(a: int, b: int) -> int:
+    return (a ^ b).bit_count()
+
+
+def dedupe_near_duplicates(corpus: List[str], *, threshold: int = 8) -> Tuple[List[str], int]:
+    """Drop posts whose SimHash is within the given Hamming distance of an earlier post."""
+    if threshold <= 0:
+        return corpus, 0
+
+    band_masks = []
+    band_bits = 16
+    for offset in range(0, 64, band_bits):
+        mask = ((1 << band_bits) - 1) << offset
+        band_masks.append((mask, offset))
+
+    buckets: Dict[Tuple[int, int], List[int]] = {}
+    fingerprints: List[int] = []
+    kept: List[str] = []
+    removed = 0
+
+    for doc in corpus:
+        tokens = tokenize_words(doc)
+        if not tokens:
+            kept.append(doc)
+            fingerprints.append(0)
+            continue
+
+        fp = simhash_signature(tokens)
+        is_duplicate = False
+        candidates: List[int] = []
+        for band_idx, (mask, shift) in enumerate(band_masks):
+            key = ((fp & mask) >> shift, band_idx)
+            if key in buckets:
+                candidates.extend(buckets[key])
+
+        for candidate_idx in candidates:
+            if hamming_distance(fp, fingerprints[candidate_idx]) <= threshold:
+                removed += 1
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            continue
+
+        idx = len(fingerprints)
+        fingerprints.append(fp)
+        kept.append(doc)
+        for band_idx, (mask, shift) in enumerate(band_masks):
+            key = ((fp & mask) >> shift, band_idx)
+            buckets.setdefault(key, []).append(idx)
+
+    return kept, removed
 
 
 def sentence_lengths(text: str) -> List[int]:
@@ -145,12 +254,18 @@ def compute_sentiment(corpus: List[str], sample_size: int) -> Dict:
     }
 
 
-def mine_phrases(corpus: List[str], max_features: int = 5000, min_df: int = 5) -> List[Tuple[str, int]]:
+def mine_phrases(
+    corpus: List[str],
+    max_features: int = 5000,
+    min_df: int = 5,
+    max_df: float = 0.1,
+) -> List[Tuple[str, int]]:
     vectorizer = CountVectorizer(
         ngram_range=(2, 3),
         stop_words="english",
         max_features=max_features,
         min_df=min_df,
+        max_df=max_df,
     )
     dtm = vectorizer.fit_transform(corpus)
     vocab = np.array(vectorizer.get_feature_names_out())
@@ -171,11 +286,18 @@ def mine_phrases(corpus: List[str], max_features: int = 5000, min_df: int = 5) -
     return pairs
 
 
-def mine_entities(corpus: List[str], top_k: int = 100) -> List[Tuple[str, int]]:
+def mine_entities(
+    corpus: List[str],
+    top_k: int = 100,
+    max_doc_ratio: float = 0.1,
+) -> List[Tuple[str, int]]:
     pattern = re.compile(r"\b[A-Z][a-zA-Z]{2,}\b")
-    counter: Counter = Counter()
+    freq_counter: Counter = Counter()
+    doc_counter: Counter = Counter()
     common_block = {"I","We","You","The","And","But","Or","Not"}
+    total_docs = len(corpus)
     for t in corpus:
+        seen_in_doc = set()
         for m in pattern.findall(t):
             low = m.lower()
             if low in STOPWORDS or m in common_block or low in MONTHS or low in DAYS:
@@ -185,8 +307,23 @@ def mine_entities(corpus: List[str], top_k: int = 100) -> List[Tuple[str, int]]:
             if re.fullmatch(r"[A-Z][a-z]+", m) is None and re.fullmatch(r"[A-Z]+", m) is None:
                 # skip weird tokens
                 pass
-            counter[m] += 1
-    return counter.most_common(top_k)
+            freq_counter[m] += 1
+            seen_in_doc.add(m)
+        for ent in seen_in_doc:
+            doc_counter[ent] += 1
+
+    if not total_docs:
+        return []
+
+    filtered: List[Tuple[str, int]] = []
+    for ent, count in freq_counter.most_common():
+        doc_ratio = doc_counter[ent] / total_docs
+        if doc_ratio > max_doc_ratio:
+            continue
+        filtered.append((ent, count))
+        if len(filtered) >= top_k:
+            break
+    return filtered
 
 
 def build_aliases(entities: List[Tuple[str, int]]) -> Dict[str, List[str]]:
@@ -368,19 +505,45 @@ def save_fewshots(pairs: List[Tuple[str, str]], path: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Spite lorebook and few-shots")
-    parser.add_argument("--corpus", default=CORPUS_PATH)
-    parser.add_argument("--out-lore", default=LOREBOOK_PATH)
-    parser.add_argument("--out-fewshots", default=FEWSHOTS_PATH)
+    parser.add_argument("--corpus", default=DEFAULT_CORPUS_PATH)
+    parser.add_argument("--out-lore", default=DEFAULT_LOREBOOK_PATH)
+    parser.add_argument("--out-fewshots", default=DEFAULT_FEWSHOTS_PATH)
     parser.add_argument("--sample", type=int, default=4000, help="documents to sample for stats/sentiment")
     parser.add_argument("--fewshots", type=int, default=5, help="number of few-shot pairs to write")
     parser.add_argument("--rag-fewshots", action="store_true", help="use RAG to build few-shots")
     parser.add_argument("--embeddings", default="spite_embeddings.npy")
     parser.add_argument("--min-df", type=int, default=5, help="min document frequency for phrase mining")
+    parser.add_argument("--max-df", type=float, default=0.1, help="max document frequency proportion for phrase mining")
+    parser.add_argument("--max-entity-doc-ratio", type=float, default=0.1, help="drop entities seen in more than this share of posts")
+    parser.add_argument("--skip-spam-filter", action="store_true", help="disable heuristic spam filtering for repetitive posts")
+    parser.add_argument("--near-dup-threshold", type=int, default=8,
+                        help="SimHash Hamming distance threshold for collapsing near-duplicate posts (0 disables)")
     args = parser.parse_args()
 
     print("Loading corpus...")
     corpus = load_corpus(args.corpus)
     print(f"Loaded {len(corpus)} posts")
+
+    if not args.skip_spam_filter:
+        print("Filtering repetitive spam...")
+        filtered_corpus, removed = filter_spammy_docs(corpus)
+        if removed:
+            pct = removed / max(len(corpus), 1)
+            print(f"Filtered {removed} spam-like posts ({pct:.1%}).")
+        else:
+            print("No spam-like posts filtered.")
+        corpus = filtered_corpus
+        print(f"Corpus after filtering: {len(corpus)} posts")
+
+    if args.near_dup_threshold > 0:
+        print("Removing near-duplicate posts...")
+        corpus, dup_removed = dedupe_near_duplicates(corpus, threshold=args.near_dup_threshold)
+        if dup_removed:
+            pct = dup_removed / max(len(corpus) + dup_removed, 1)
+            print(f"Removed {dup_removed} near-duplicate posts ({pct:.1%}).")
+        else:
+            print("No near-duplicates detected.")
+        print(f"Corpus after dedupe: {len(corpus)} posts")
 
     print("Computing style stats...")
     stats = basic_stats(corpus, args.sample)
@@ -391,11 +554,11 @@ def main():
     print("Sentiment:", sentiment)
 
     print("Mining phrases...")
-    phrases = mine_phrases(corpus, min_df=args.min_df)
+    phrases = mine_phrases(corpus, min_df=args.min_df, max_df=args.max_df)
     print(f"Top phrases: {phrases[:10]}")
 
     print("Mining entities...")
-    entities = mine_entities(corpus)
+    entities = mine_entities(corpus, max_doc_ratio=args.max_entity_doc_ratio)
     print(f"Top entities: {entities[:10]}")
 
     print("Building lorebook...")

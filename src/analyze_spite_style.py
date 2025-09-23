@@ -1,4 +1,5 @@
 from collections import Counter
+import hashlib
 import spacy
 import json
 import numpy as np
@@ -22,6 +23,122 @@ METADATA_PATH = config.METADATA_PATH
 STYLE_PROFILE_PATH = config.STYLE_PROFILE_PATH
 SYSTEM_PROMPT_PATH = config.SYSTEM_PROMPT_PATH
 
+NEAR_DUP_THRESHOLD = 8
+
+# Shared spam filtering helpers (mirrors generate_lore_and_fewshots.py)
+def is_repetitive_spam(text, *, top_token_ratio=0.35, unique_ratio=0.45, bigram_ratio=0.25):
+    """Detect extremely repetitive posts that drown out organic topics."""
+    words = re.findall(r"[a-zA-Z']+", text.lower())
+    if len(words) < 12:
+        return False
+
+    total = len(words)
+    unigram_counts = Counter(words)
+    most_common_unigram = unigram_counts.most_common(1)[0][1] / total
+    unique_unigram_ratio = len(unigram_counts) / total
+    if most_common_unigram >= top_token_ratio and unique_unigram_ratio <= unique_ratio:
+        return True
+
+    # Catch repeated phrases like "peter vack" x N
+    bigram_total = max(total - 1, 1)
+    bigram_counts = Counter(zip(words, words[1:]))
+    if bigram_counts:
+        top_bigram = bigram_counts.most_common(1)[0][1] / bigram_total
+        if top_bigram >= bigram_ratio:
+            return True
+
+    return False
+
+
+def filter_spammy_docs(corpus):
+    filtered = []
+    removed = 0
+    for doc in corpus:
+        if is_repetitive_spam(doc):
+            removed += 1
+            continue
+        filtered.append(doc)
+    return filtered, removed
+
+
+def tokenize_words(text):
+    return re.findall(r"[a-zA-Z']+", text.lower())
+
+
+def simhash_signature(tokens, bits=64):
+    if not tokens:
+        return 0
+    vector = [0] * bits
+    counts = Counter(tokens)
+    for token, weight in counts.items():
+        digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+        value = int.from_bytes(digest, "big")
+        for i in range(bits):
+            mask = 1 << i
+            if value & mask:
+                vector[i] += weight
+            else:
+                vector[i] -= weight
+    fingerprint = 0
+    for i, score in enumerate(vector):
+        if score > 0:
+            fingerprint |= 1 << i
+    return fingerprint
+
+
+def hamming_distance(a, b):
+    return (a ^ b).bit_count()
+
+
+def dedupe_near_duplicates(corpus, *, threshold=8):
+    """Drop posts whose SimHash is within `threshold` of an earlier post."""
+    if threshold <= 0:
+        return corpus, 0
+
+    band_masks = []
+    band_bits = 16
+    for offset in range(0, 64, band_bits):
+        mask = ((1 << band_bits) - 1) << offset
+        band_masks.append((mask, offset))
+
+    buckets = {}
+    fingerprints = []
+    kept = []
+    removed = 0
+
+    for doc in corpus:
+        tokens = tokenize_words(doc)
+        if not tokens:
+            kept.append(doc)
+            fingerprints.append(0)
+            continue
+
+        fp = simhash_signature(tokens)
+        is_duplicate = False
+        candidates = []
+        for band_idx, (mask, shift) in enumerate(band_masks):
+            key = ((fp & mask) >> shift, band_idx)
+            if key in buckets:
+                candidates.extend(buckets[key])
+
+        for candidate_idx in candidates:
+            if hamming_distance(fp, fingerprints[candidate_idx]) <= threshold:
+                removed += 1
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            continue
+
+        idx = len(fingerprints)
+        fingerprints.append(fp)
+        kept.append(doc)
+        for band_idx, (mask, shift) in enumerate(band_masks):
+            key = ((fp & mask) >> shift, band_idx)
+            buckets.setdefault(key, []).append(idx)
+
+    return kept, removed
+
 # Load spacy model
 print("Loading spaCy model...")
 nlp = spacy.load("en_core_web_sm")
@@ -40,10 +157,28 @@ def clean_text(text):
 
 def analyze_corpus_style():
     print("\nAnalyzing corpus style...")
-    
+
+    print("Filtering repetitive spam...")
+    filtered_corpus, spam_filtered_posts = filter_spammy_docs(corpus)
+    if spam_filtered_posts:
+        pct = spam_filtered_posts / max(len(corpus), 1)
+        print(f"Filtered {spam_filtered_posts} posts ({pct:.1%}) for excessive repetition")
+    else:
+        print("No spam-like posts filtered")
+    print(f"Corpus after spam filtering: {len(filtered_corpus)} documents")
+
+    print("Removing near-duplicate posts...")
+    deduped_corpus, near_dup_removed = dedupe_near_duplicates(filtered_corpus, threshold=NEAR_DUP_THRESHOLD)
+    if near_dup_removed:
+        pct = near_dup_removed / max(len(filtered_corpus) + near_dup_removed, 1)
+        print(f"Removed {near_dup_removed} near-duplicate posts ({pct:.1%})")
+    else:
+        print("No near-duplicate posts removed")
+    print(f"Corpus after dedupe: {len(deduped_corpus)} documents")
+
     print("Cleaning texts...")
-    cleaned_corpus = [clean_text(text) for text in tqdm(corpus)]
-    
+    cleaned_corpus = [clean_text(text) for text in tqdm(deduped_corpus)]
+
     # Initialize metrics
     metrics = {
         'sentence_lengths': [],
@@ -53,13 +188,20 @@ def analyze_corpus_style():
         'topics': [],
         'response_styles': Counter()
     }
+    skipped_long_posts = 0
     
     print("\nAnalyzing individual posts...")
     post_redundancy_checker = set()
+    analyzed_texts = []
     for text in tqdm(cleaned_corpus):
+        if len(text) > nlp.max_length:
+            skipped_long_posts += 1
+            continue
         if text in post_redundancy_checker:
             continue
         post_redundancy_checker.add(text)
+
+        analyzed_texts.append(text)
 
         doc = nlp(text)
         
@@ -111,22 +253,27 @@ def analyze_corpus_style():
                 redundancy_checker.append(f"{words[i]} {words[i+1]} {words[i+2]}")
                 metrics['common_phrases'][f"{words[i]} {words[i+1]} {words[i+2]}"] += 1
 
+    if skipped_long_posts:
+        print(f"Skipped {skipped_long_posts} posts longer than spaCy's max_length ({nlp.max_length:,} characters)")
+
     print("\nPerforming topic modeling...")
-    # Topic modeling
-    vectorizer = CountVectorizer(max_features=1000, stop_words='english')
-    print("Vectorizing documents...")
-    doc_term_matrix = vectorizer.fit_transform(cleaned_corpus)
-    
-    print("Fitting LDA model...")
-    lda = LatentDirichletAllocation(n_components=5, random_state=42)
-    lda.fit(doc_term_matrix)
-    
-    # Get top words for each topic
-    print("Extracting topics...")
-    feature_names = vectorizer.get_feature_names_out()
-    for topic_idx, topic in enumerate(lda.components_):
-        top_words = [feature_names[i] for i in topic.argsort()[:-10:-1]]
-        metrics['topics'].append(top_words)
+    if analyzed_texts:
+        vectorizer = CountVectorizer(max_features=1000, stop_words='english')
+        print("Vectorizing documents...")
+        doc_term_matrix = vectorizer.fit_transform(analyzed_texts)
+
+        print("Fitting LDA model...")
+        lda = LatentDirichletAllocation(n_components=5, random_state=42)
+        lda.fit(doc_term_matrix)
+
+        # Get top words for each topic
+        print("Extracting topics...")
+        feature_names = vectorizer.get_feature_names_out()
+        for topic_idx, topic in enumerate(lda.components_):
+            top_words = [feature_names[i] for i in topic.argsort()[:-10:-1]]
+            metrics['topics'].append(top_words)
+    else:
+        print("No documents available after filtering; skipping topic modeling")
 
     print("\nCalculating summary statistics...")
     # Calculate summary statistics. JSON can't serialize numpy types or NaN values,
@@ -141,6 +288,8 @@ def analyze_corpus_style():
     avg_sentence_length, sentence_std = safe_stats(metrics['sentence_lengths'])
     sentiment_mean, sentiment_std = safe_stats(metrics['sentiment_scores'])
 
+    total_posts_analyzed = len(analyzed_texts)
+
     style_profile = {
         'avg_sentence_length': avg_sentence_length,
         'sentence_std': sentence_std,
@@ -148,7 +297,14 @@ def analyze_corpus_style():
         'sentiment_std': sentiment_std,
         'common_phrases': metrics['common_phrases'].most_common(20),
         'response_styles': dict(metrics['response_styles']),
-        'topics': metrics['topics']
+        'topics': metrics['topics'],
+        'initial_corpus_size': len(corpus),
+        'posts_after_spam_filter': len(filtered_corpus),
+        'posts_after_dedupe': len(deduped_corpus),
+        'spam_filtered_posts': spam_filtered_posts,
+        'near_duplicate_removed_posts': near_dup_removed,
+        'skipped_long_posts': skipped_long_posts,
+        'total_posts_analyzed': total_posts_analyzed
     }
     
     return style_profile
@@ -161,6 +317,7 @@ def generate_style_prompt(style_profile):
     sentence_std = style_profile.get('sentence_std')
     sentiment_mean = style_profile.get('sentiment_mean')
     sentiment_std = style_profile.get('sentiment_std')
+    total_posts = style_profile.get('total_posts_analyzed', 0)
 
     def format_num(value):
         return f"{value:.1f}" if value is not None else "N/A"
@@ -181,7 +338,7 @@ Voice & Tone:
 - Response length standard deviation: {format_num(sentence_std)} words
 - Overall sentiment: {sentiment_descriptor}
 - Sentiment standard deviation: {format_num(sentiment_std)}
-- Common response styles: {', '.join(f'{k}: {v}' for k, v in style_profile['response_styles'].items() if v > len(corpus)/10)}
+- Common response styles: {', '.join(f'{k}: {v}' for k, v in style_profile['response_styles'].items() if v > max(total_posts, 1)/10)}
 
 Frequent topics and themes:
 {', '.join(', '.join(topic) for topic in style_profile['topics'])}
