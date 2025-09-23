@@ -24,6 +24,7 @@ class Config:
     # File paths
     CORPUS_PATH = "data/spite_corpus.json"
     EMBEDDINGS_PATH = "data/spite_embeddings.npy"
+    METADATA_PATH = "data/spite_metadata.json"
     STYLE_PROFILE_PATH = "data/spite_style_profile.json"
     SYSTEM_PROMPT_PATH = "data/spite_system_prompt.txt"
     
@@ -84,6 +85,7 @@ class Config:
         # Override with environment variables if present
         config.CORPUS_PATH = os.getenv("SPITE_CORPUS_PATH", config.CORPUS_PATH)
         config.EMBEDDINGS_PATH = os.getenv("SPITE_EMBEDDINGS_PATH", config.EMBEDDINGS_PATH)
+        config.METADATA_PATH = os.getenv("SPITE_METADATA_PATH", config.METADATA_PATH)
         config.STYLE_PROFILE_PATH = os.getenv("SPITE_STYLE_PROFILE_PATH", config.STYLE_PROFILE_PATH)
         config.SYSTEM_PROMPT_PATH = os.getenv("SPITE_SYSTEM_PROMPT_PATH", config.SYSTEM_PROMPT_PATH)
         config.MODEL_NAME = os.getenv("SPITE_MODEL_NAME", config.MODEL_NAME)

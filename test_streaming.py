@@ -33,6 +33,7 @@ def test_streaming():
         response.raise_for_status()
         
         accumulated_response = ""
+        citations = []
         
         for line in response.iter_lines(decode_unicode=True):
             if line:
@@ -40,7 +41,13 @@ def test_streaming():
                     try:
                         data = json.loads(line[6:])  # Remove "data: " prefix
                         
-                        if "content" in data:
+                        if "citations" in data:
+                            citations = data["citations"]
+                            print("Citations received:")
+                            for citation in citations:
+                                print(f"  [{citation['citation_number']}] {citation['type'].title()} {citation['id']} -> {citation['url']}")
+                            print("-" * 50)
+                        elif "content" in data:
                             content = data["content"]
                             print(content, end="", flush=True)
                             accumulated_response += content
@@ -57,6 +64,16 @@ def test_streaming():
                         print(f"Raw line: {line}")
         
         print(f"\nFull response length: {len(accumulated_response)} characters")
+        
+        if citations:
+            print(f"\nCitation Summary ({len(citations)} sources):")
+            for citation in citations:
+                print(f"  [{citation['citation_number']}] {citation['type'].title()} ID: {citation['id']}")
+                if citation['type'] == 'post' and citation.get('title'):
+                    print(f"      Title: {citation['title']}")
+                elif citation['type'] == 'comment' and citation.get('name'):
+                    print(f"      Author: {citation['name']}")
+        
         return True
         
     except requests.exceptions.ConnectionError:
@@ -96,6 +113,25 @@ def test_regular_endpoint():
         print("-" * 50)
         print(data.get("response", "No response"))
         print("-" * 50)
+        
+        # Show citation metadata if present
+        citations = data.get("citations", [])
+        if citations:
+            print("\nCitation Sources:")
+            print("-" * 50)
+            for citation in citations:
+                print(f"[{citation['citation_number']}] {citation['type'].title()} ID: {citation['id']}")
+                print(f"    URL: {citation['url']}")
+                if citation['type'] == 'post':
+                    print(f"    Title: {citation.get('title', 'N/A')}")
+                    print(f"    Author: {citation.get('display_name') or citation.get('author') or 'Anonymous'}")
+                elif citation['type'] == 'comment':
+                    print(f"    Name: {citation.get('name', 'Anonymous')}")
+                    if citation.get('post_id'):
+                        print(f"    Parent Post ID: {citation['post_id']}")
+                print()
+        else:
+            print("\nNo citations found.")
         
         return True
         

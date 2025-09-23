@@ -1,4 +1,4 @@
-from typing import Optional, Generator
+from typing import Optional, Generator, List
 import logging
 import json
 
@@ -51,6 +51,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    citations: Optional[List[dict]] = None
 
 @app.get("/health")
 def health() -> dict:
@@ -66,15 +67,38 @@ def chat(req: ChatRequest) -> ChatResponse:
         
         logger.info(f"Processing chat request: {req.query[:50]}...")
         
-        # Use the pre-initialized AI system
-        context = ai_system.get_context(req.query, k=req.k, similarity_threshold=req.similarity_threshold)
+        # Use the pre-initialized AI system with metadata
+        context, citation_metadata = ai_system.get_context_with_metadata(req.query, k=req.k, similarity_threshold=req.similarity_threshold)
         logger.info("Context retrieved successfully")
         
-        # Generate response using the AI system
-        result = ai_system.generate_response(req.query, context, req.chat_history or "")
+        # Generate response using the AI system (non-streaming)
+        result = ai_system.generate_response(req.query, context, req.chat_history or "", stream=False)
+        
+        # Add citation numbers to metadata
+        citations = []
+        for i, meta in enumerate(citation_metadata, 1):
+            citation = {
+                "citation_number": i,
+                "type": meta["type"],  # "post" or "comment"
+                "id": meta["id"],
+                "url": f"/{meta['type']}/{meta['id']}"  # Frontend can customize this
+            }
+            # Add additional fields based on type
+            if meta["type"] == "post":
+                citation.update({
+                    "title": meta.get("title", ""),
+                    "author": meta.get("author"),
+                    "display_name": meta.get("display_name", "")
+                })
+            elif meta["type"] == "comment":
+                citation.update({
+                    "name": meta.get("name", ""),
+                    "post_id": meta.get("post_id")
+                })
+            citations.append(citation)
         
         logger.info("Response generated successfully")
-        return ChatResponse(response=result)
+        return ChatResponse(response=result, citations=citations)
     
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
@@ -116,6 +140,31 @@ def generate_stream_response(stream_generator) -> Generator[str, None, None]:
         yield f"data: {error_data}\n\n"
 
 
+def generate_stream_response_with_citations(stream_generator, citations: List[dict]) -> Generator[str, None, None]:
+    """Convert streaming response to Server-Sent Events format with citations."""
+    try:
+        # First, send the citations
+        if citations:
+            citations_data = json.dumps({"citations": citations})
+            yield f"data: {citations_data}\n\n"
+        
+        # Then stream the content
+        for chunk in stream_generator:
+            if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'content') and delta.content:
+                    # Format as Server-Sent Events
+                    data = json.dumps({"content": delta.content})
+                    yield f"data: {data}\n\n"
+        
+        # Signal end of stream
+        yield f"data: {json.dumps({'done': True})}\n\n"
+        
+    except Exception as e:
+        error_data = json.dumps({"error": str(e)})
+        yield f"data: {error_data}\n\n"
+
+
 @app.post("/chat/stream")
 def chat_stream(req: ChatRequest):
     """Stream a response using RAG over Spite Magazine corpus."""
@@ -135,18 +184,41 @@ def chat_stream(req: ChatRequest):
         
         logger.info(f"Processing streaming chat request: {req.query[:50]}...")
         
-        # Use the pre-initialized AI system
-        context = ai_system.get_context(req.query, k=req.k, similarity_threshold=req.similarity_threshold)
+        # Use the pre-initialized AI system with metadata
+        context, citation_metadata = ai_system.get_context_with_metadata(req.query, k=req.k, similarity_threshold=req.similarity_threshold)
         logger.info("Context retrieved successfully")
+        
+        # Prepare citation metadata
+        citations = []
+        for i, meta in enumerate(citation_metadata, 1):
+            citation = {
+                "citation_number": i,
+                "type": meta["type"],  # "post" or "comment"
+                "id": meta["id"],
+                "url": f"/{meta['type']}/{meta['id']}"  # Frontend can customize this
+            }
+            # Add additional fields based on type
+            if meta["type"] == "post":
+                citation.update({
+                    "title": meta.get("title", ""),
+                    "author": meta.get("author"),
+                    "display_name": meta.get("display_name", "")
+                })
+            elif meta["type"] == "comment":
+                citation.update({
+                    "name": meta.get("name", ""),
+                    "post_id": meta.get("post_id")
+                })
+            citations.append(citation)
         
         # Generate streaming response using the AI system
         stream_generator = ai_system.generate_response(req.query, context, req.chat_history or "", stream=True)
         
         logger.info("Starting streaming response")
         
-        # Return streaming response
+        # Return streaming response with citations
         return StreamingResponse(
-            generate_stream_response(stream_generator),
+            generate_stream_response_with_citations(stream_generator, citations),
             media_type="text/plain",
             headers={
                 "Cache-Control": "no-cache",

@@ -66,6 +66,7 @@ class SpiteAI:
         self.config = config or Config.from_env()
         self.corpus_path = self.config.CORPUS_PATH
         self.embeddings_path = self.config.EMBEDDINGS_PATH
+        self.metadata_path = self.config.METADATA_PATH
         self.style_profile_path = self.config.STYLE_PROFILE_PATH
         self.system_prompt_path = self.config.SYSTEM_PROMPT_PATH
 
@@ -84,9 +85,11 @@ class SpiteAI:
             self.index = faiss.IndexFlatL2(self.embeddings.shape[1])
             self.index.add(self.embeddings.astype(np.float32))
             
-            logger.info("Loading corpus and style profile...")
+            logger.info("Loading corpus, metadata, and style profile...")
             with open(self.corpus_path, 'r', encoding='utf-8') as f:
                 self.corpus = json.load(f)
+            with open(self.metadata_path, 'r', encoding='utf-8') as f:
+                self.metadata = json.load(f)
             with open(self.style_profile_path, 'r', encoding='utf-8') as f:
                 self.style_profile = json.load(f)
             with open(self.system_prompt_path, 'r', encoding='utf-8') as f:
@@ -116,7 +119,12 @@ class SpiteAI:
     
     def get_context(self, query: str, k: Optional[int] = None, similarity_threshold: Optional[float] = None) -> str:
         """Get context using this AI system's models and data."""
-        return get_context(query, k, similarity_threshold)
+        context, _ = get_context_with_metadata(query, k, similarity_threshold)
+        return context
+    
+    def get_context_with_metadata(self, query: str, k: Optional[int] = None, similarity_threshold: Optional[float] = None) -> Tuple[str, List[dict]]:
+        """Get context with citation metadata using this AI system's models and data."""
+        return get_context_with_metadata(query, k, similarity_threshold)
     
     def generate_response(self, query: str, context: str, chat_history: str, stream: bool = False):
         """Generate response using this AI system's client."""
@@ -146,15 +154,16 @@ try:
     embeddings = ai_system.embeddings
     index = ai_system.index
     corpus = ai_system.corpus
+    metadata = ai_system.metadata
     style_profile = ai_system.style_profile
     SYSTEM_PROMPT = ai_system.system_prompt
 except Exception as e:
     logger.error(f"Failed to initialize AI system: {e}")
     exit(1)
 
-def get_context(query: str, k: Optional[int] = None, similarity_threshold: Optional[float] = None) -> str:
+def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_threshold: Optional[float] = None) -> Tuple[str, List[dict]]:
     """
-    Retrieve relevant context passages for a given query.
+    Retrieve relevant context passages for a given query with citation metadata.
     
     Args:
         query: The search query
@@ -162,7 +171,7 @@ def get_context(query: str, k: Optional[int] = None, similarity_threshold: Optio
         similarity_threshold: Minimum similarity score to include passage (uses config default if None)
         
     Returns:
-        Concatenated relevant passages
+        Tuple of (concatenated relevant passages, list of citation metadata)
     """
     try:
         # Use config defaults if not provided
@@ -228,31 +237,54 @@ def get_context(query: str, k: Optional[int] = None, similarity_threshold: Optio
             # Sort by combined boosted score
             prelim.sort(key=lambda x: x[2], reverse=True)
 
-        # Materialize top passages, guaranteeing a minimum
+        # Materialize top passages with metadata, guaranteeing a minimum
         min_passages = max(1, getattr(config, 'MIN_CONTEXT_PASSAGES', 3))
-        selected = [t for _, t, _, _ in prelim[: max(k or config.DEFAULT_K, min_passages)]]
+        top_results = prelim[: max(k or config.DEFAULT_K, min_passages)]
+        selected = [t for _, t, _, _ in top_results]
+        selected_metadata = [metadata[i] for i, _, _, _ in top_results]
         
         # If still short, backfill from raw order
         if len(selected) < min_passages:
             backfill = []
+            backfill_metadata = []
             seen = set(selected)
             for idx in I[0]:
                 cand = corpus[idx]
                 if cand not in seen:
                     backfill.append(cand)
+                    backfill_metadata.append(metadata[idx])
                 if len(selected) + len(backfill) >= min_passages:
                     break
-                selected.extend(backfill)
-                seen.add(cand)
+            selected.extend(backfill)
+            selected_metadata.extend(backfill_metadata)
+            seen.update(backfill)
         
-        # Return up to max_context_passages most relevant passages
-        result = "\n\n".join(selected[:config.MAX_CONTEXT_PASSAGES])
-        logger.info(f"Returning {len(selected[:config.MAX_CONTEXT_PASSAGES])} relevant passages")
-        return result
+        # Return up to max_context_passages most relevant passages with metadata
+        max_passages = config.MAX_CONTEXT_PASSAGES
+        final_selected = selected[:max_passages]
+        final_metadata = selected_metadata[:max_passages]
+        result = "\n\n".join(final_selected)
+        logger.info(f"Returning {len(final_selected)} relevant passages with metadata")
+        return result, final_metadata
         
     except Exception as e:
-        logger.error(f"Error in get_context: {e}")
-        return "Error retrieving context. Please try again."
+        logger.error(f"Error in get_context_with_metadata: {e}")
+        return "Error retrieving context. Please try again.", []
+
+def get_context(query: str, k: Optional[int] = None, similarity_threshold: Optional[float] = None) -> str:
+    """
+    Retrieve relevant context passages for a given query (backward compatibility).
+    
+    Args:
+        query: The search query
+        k: Number of passages to retrieve (uses config default if None)
+        similarity_threshold: Minimum similarity score to include passage (uses config default if None)
+        
+    Returns:
+        Concatenated relevant passages
+    """
+    context, _ = get_context_with_metadata(query, k, similarity_threshold)
+    return context
 
 def generate_with_mistral(query: str, context: str, chat_history: str, client: Optional[groq.Groq] = None, stream: bool = False):
     """

@@ -81,7 +81,26 @@ Generate a response using RAG over Spite Magazine corpus.
 **Response:**
 ```json
 {
-  "response": "string"         // Generated response from Spite AI
+  "response": "string",        // Generated response from Spite AI
+  "citations": [               // Array of citation metadata (optional)
+    {
+      "citation_number": 1,
+      "type": "post",          // "post" or "comment"
+      "id": 123,
+      "url": "/post/123",
+      "title": "Post title",   // For posts
+      "author": "author_id",   // For posts
+      "display_name": "Author Name"  // For posts
+    },
+    {
+      "citation_number": 2,
+      "type": "comment",
+      "id": 456,
+      "url": "/comment/456",
+      "name": "Commenter Name",  // For comments
+      "post_id": 123           // Parent post ID for comments
+    }
+  ]
 }
 ```
 
@@ -99,12 +118,22 @@ Generate a streaming response using RAG over Spite Magazine corpus. This endpoin
 ```
 
 **Response:**
-Server-Sent Events stream with `Content-Type: text/event-stream`. Each event contains:
+Server-Sent Events stream with `Content-Type: text/event-stream`. Events include:
+
+1. **Citations** (sent first):
+```
+data: {"citations": [{"citation_number": 1, "type": "post", "id": 123, "url": "/post/123", ...}]}
+```
+
+2. **Content chunks** (streaming response):
 ```
 data: {"content": "partial response text"}
 
 data: {"content": "more response text"}
+```
 
+3. **Completion signal**:
+```
 data: {"done": true}
 ```
 
@@ -134,6 +163,7 @@ const response = await fetch('http://localhost:8080/chat/stream', {
 
 const reader = response.body.getReader();
 const decoder = new TextDecoder();
+let citations = [];
 
 while (true) {
   const { done, value } = await reader.read();
@@ -145,10 +175,16 @@ while (true) {
   for (const line of lines) {
     if (line.startsWith('data: ')) {
       const data = JSON.parse(line.slice(6));
-      if (data.content) {
-        console.log(data.content);
+      
+      if (data.citations) {
+        citations = data.citations;
+        console.log('Citations:', citations);
+        // Frontend can now create links using citation.url
+      } else if (data.content) {
+        console.log(data.content); // Stream the content in real-time
       } else if (data.done) {
         console.log('Stream finished');
+        // Now you have both the full response and citation metadata
       }
     }
   }
