@@ -35,14 +35,21 @@ try:
 except Exception:  # transformers optional
     pipeline = None
 
-DEFAULT_CORPUS_PATH = "spite_corpus.json"
-DEFAULT_LOREBOOK_PATH = "spite_lorebook.json"
-DEFAULT_FEWSHOTS_PATH = "spite_fewshots.txt"
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.spite_ai.config import Config
+
+config = Config.from_env()
+
+CORPUS_PATH = config.CORPUS_PATH
+LOREBOOK_PATH = config.LOREBOOK_PATH
+FEWSHOTS_PATH = config.FEWSHOT_PATH
 
 # Heuristic slang/alias seeds
 SLANG_SEED = {
     "schizo", "bit", "canon", "admin", "dimes", "dimes square", "bucharest",
-    "spite", "nazbol", "vack", "vegas", "reading", "transylvania", "goon",
+    "spite",  "vack", "vegas", "reading", "transylvania",
 }
 ALIASES_SEED = {
     "jayden": ["jaden", "child of prophecy"],
@@ -361,9 +368,9 @@ def save_fewshots(pairs: List[Tuple[str, str]], path: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Spite lorebook and few-shots")
-    parser.add_argument("--corpus", default=DEFAULT_CORPUS_PATH)
-    parser.add_argument("--out-lore", default=DEFAULT_LOREBOOK_PATH)
-    parser.add_argument("--out-fewshots", default=DEFAULT_FEWSHOTS_PATH)
+    parser.add_argument("--corpus", default=CORPUS_PATH)
+    parser.add_argument("--out-lore", default=LOREBOOK_PATH)
+    parser.add_argument("--out-fewshots", default=FEWSHOTS_PATH)
     parser.add_argument("--sample", type=int, default=4000, help="documents to sample for stats/sentiment")
     parser.add_argument("--fewshots", type=int, default=5, help="number of few-shot pairs to write")
     parser.add_argument("--rag-fewshots", action="store_true", help="use RAG to build few-shots")

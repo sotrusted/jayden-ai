@@ -1,0 +1,629 @@
+{
+  "style": {
+    "avg_sentence_length": 8.00617755699911,
+    "sentence_std": 10.782794337469923,
+    "sentiment_mean": -0.40714367979764937,
+    "sentiment_std": 0.8731193940803909,
+    "response_styles": {
+      "brief": 2741,
+      "ironic": 153,
+      "questioning": 458,
+      "emphatic": 163
+    }
+  },
+  "entities": [
+    [
+      "Spite",
+      4921
+    ],
+    [
+      "James",
+      1416
+    ],
+    [
+      "Aaronson",
+      1065
+    ],
+    [
+      "Josh",
+      952
+    ],
+    [
+      "Peter",
+      810
+    ],
+    [
+      "Bucharest",
+      703
+    ],
+    [
+      "Vack",
+      679
+    ],
+    [
+      "Bienstock",
+      589
+    ],
+    [
+      "God",
+      496
+    ],
+    [
+      "Support",
+      489
+    ],
+    [
+      "Alex",
+      482
+    ],
+    [
+      "Don",
+      424
+    ],
+    [
+      "Love",
+      381
+    ],
+    [
+      "Let",
+      380
+    ],
+    [
+      "Maybe",
+      379
+    ],
+    [
+      "Fuck",
+      326
+    ],
+    [
+      "Dimes",
+      326
+    ],
+    [
+      "Yes",
+      295
+    ],
+    [
+      "Square",
+      287
+    ],
+    [
+      "Transylvania",
+      284
+    ],
+    [
+      "SPITE",
+      283
+    ],
+    [
+      "Hey",
+      278
+    ],
+    [
+      "York",
+      265
+    ],
+    [
+      "Jewish",
+      260
+    ],
+    [
+      "Billy",
+      239
+    ],
+    [
+      "Vegas",
+      239
+    ],
+    [
+      "Janitor",
+      227
+    ],
+    [
+      "DOOM",
+      221
+    ],
+    [
+      "Sorry",
+      210
+    ],
+    [
+      "JAMES",
+      210
+    ],
+    [
+      "Thank",
+      203
+    ],
+    [
+      "Moon",
+      198
+    ],
+    [
+      "Post",
+      197
+    ],
+    [
+      "Israel",
+      190
+    ],
+    [
+      "Did",
+      186
+    ],
+    [
+      "Admin",
+      186
+    ],
+    [
+      "Crisis",
+      184
+    ],
+    [
+      "Magazine",
+      182
+    ],
+    [
+      "Anonymous",
+      180
+    ],
+    [
+      "AARONSON",
+      180
+    ],
+    [
+      "Joshua",
+      178
+    ],
+    [
+      "Time",
+      176
+    ],
+    [
+      "Pussy",
+      175
+    ],
+    [
+      "Instagram",
+      171
+    ],
+    [
+      "Does",
+      168
+    ],
+    [
+      "Jews",
+      168
+    ],
+    [
+      "NYC",
+      159
+    ],
+    [
+      "Stop",
+      157
+    ],
+    [
+      "Real",
+      156
+    ],
+    [
+      "Reading",
+      152
+    ],
+    [
+      "Girl",
+      148
+    ],
+    [
+      "Make",
+      147
+    ],
+    [
+      "Chronic",
+      147
+    ],
+    [
+      "American",
+      145
+    ],
+    [
+      "Jesus",
+      141
+    ],
+    [
+      "Art",
+      139
+    ],
+    [
+      "Life",
+      139
+    ],
+    [
+      "FUCKING",
+      137
+    ],
+    [
+      "Look",
+      136
+    ],
+    [
+      "Bro",
+      135
+    ],
+    [
+      "Pedlow",
+      135
+    ],
+    [
+      "FUCK",
+      134
+    ],
+    [
+      "Chaser",
+      134
+    ],
+    [
+      "Martyr",
+      133
+    ],
+    [
+      "Nazbol",
+      133
+    ],
+    [
+      "Imagine",
+      132
+    ],
+    [
+      "City",
+      132
+    ],
+    [
+      "Day",
+      131
+    ],
+    [
+      "Man",
+      131
+    ],
+    [
+      "LOVE",
+      130
+    ],
+    [
+      "McDonald",
+      125
+    ],
+    [
+      "Women",
+      124
+    ],
+    [
+      "Jenkinson",
+      124
+    ],
+    [
+      "Need",
+      120
+    ],
+    [
+      "Thanks",
+      119
+    ],
+    [
+      "Alice",
+      117
+    ],
+    [
+      "Come",
+      116
+    ],
+    [
+      "World",
+      114
+    ],
+    [
+      "HATE",
+      113
+    ],
+    [
+      "Link",
+      111
+    ],
+    [
+      "Big",
+      110
+    ],
+    [
+      "Open",
+      110
+    ],
+    [
+      "Black",
+      107
+    ],
+    [
+      "Aug",
+      107
+    ],
+    [
+      "Anon",
+      106
+    ],
+    [
+      "Earth",
+      104
+    ],
+    [
+      "Jew",
+      104
+    ],
+    [
+      "Minji",
+      104
+    ],
+    [
+      "MORPHENTOP",
+      103
+    ],
+    [
+      "Kill",
+      102
+    ],
+    [
+      "Management",
+      102
+    ],
+    [
+      "Taylor",
+      102
+    ],
+    [
+      "Sun",
+      101
+    ],
+    [
+      "Copy",
+      101
+    ],
+    [
+      "Dey",
+      101
+    ],
+    [
+      "Guys",
+      100
+    ],
+    [
+      "Got",
+      100
+    ],
+    [
+      "Rape",
+      100
+    ],
+    [
+      "Tell",
+      99
+    ],
+    [
+      "Say",
+      99
+    ]
+  ],
+  "memes": [
+    "james aaronson",
+    "peter vack",
+    "spite bucharest",
+    "don know",
+    "dimes square",
+    "ok love",
+    "alex bienstock",
+    "new york",
+    "don want",
+    "spite magazine",
+    "spite admin",
+    "spite transylvania",
+    "spite fr",
+    "don think",
+    "don care",
+    "spite janitor",
+    "spite reading",
+    "don like",
+    "spite vegas",
+    "love spite",
+    "james jenkinson",
+    "post spite",
+    "billy pedlow",
+    "spite chaser",
+    "spite nazbol",
+    "spite new",
+    "don understand",
+    "peter vack alex",
+    "vack alex",
+    "don need",
+    "oh god",
+    "people don",
+    "crisis management",
+    "posting spite",
+    "vack alex bienstock",
+    "women support",
+    "abuse women support",
+    "pussy like",
+    "don really",
+    "shut fuck",
+    "alex bienstock abuse",
+    "bienstock abuse",
+    "beat pussy",
+    "like don",
+    "write spite",
+    "maybe just",
+    "just don",
+    "new york city",
+    "york city",
+    "let know"
+  ],
+  "aliases": {
+    "jayden": [
+      "jaden",
+      "child of prophecy"
+    ],
+    "spite": [
+      "spt",
+      "spyte"
+    ],
+    "james": [
+      "jms"
+    ],
+    "aaronson": [
+      "rnsn"
+    ],
+    "josh": [
+      "jsh"
+    ],
+    "peter": [
+      "ptr"
+    ],
+    "bucharest": [
+      "bchrst"
+    ],
+    "vack": [
+      "vck"
+    ],
+    "bienstock": [
+      "bnstck",
+      "byenstock"
+    ],
+    "support": [
+      "spprt"
+    ],
+    "maybe": [
+      "maibe",
+      "myb"
+    ],
+    "fuck": [
+      "fck"
+    ],
+    "dimes": [
+      "dms",
+      "dymes"
+    ],
+    "yes": [
+      "ies"
+    ],
+    "square": [
+      "sqr"
+    ],
+    "transylvania": [
+      "transilvania",
+      "transylvanya",
+      "trnsylvn"
+    ],
+    "hey": [
+      "hei"
+    ],
+    "york": [
+      "iork",
+      "yrk"
+    ],
+    "jewish": [
+      "jewysh",
+      "jwsh"
+    ],
+    "billy": [
+      "billi",
+      "blly",
+      "bylly"
+    ],
+    "vegas": [
+      "vgs"
+    ],
+    "janitor": [
+      "janytor",
+      "jntr"
+    ],
+    "sorry": [
+      "sorri",
+      "srry"
+    ],
+    "thank": [
+      "thnk"
+    ],
+    "post": [
+      "pst"
+    ],
+    "israel": [
+      "srl",
+      "ysrael"
+    ],
+    "did": [
+      "dyd"
+    ],
+    "admin": [
+      "admyn",
+      "dmn"
+    ],
+    "crisis": [
+      "crss",
+      "crysys"
+    ],
+    "magazine": [
+      "magazyne",
+      "mgzn"
+    ],
+    "anonymous": [
+      "anonimous",
+      "nnyms"
+    ],
+    "joshua": [
+      "jsh"
+    ],
+    "time": [
+      "tyme"
+    ],
+    "pussy": [
+      "pssy",
+      "pussi"
+    ],
+    "instagram": [
+      "nstgrm",
+      "ynstagram"
+    ],
+    "jews": [
+      "jws"
+    ],
+    "nyc": [
+      "nic"
+    ],
+    "stop": [
+      "stp"
+    ],
+    "reading": [
+      "rdng",
+      "readyng"
+    ]
+  },
+  "slang": [
+    "admin",
+    "bit",
+    "bucharest",
+    "canon",
+    "dimes",
+    "dimes square",
+    "goon",
+    "nazbol",
+    "reading",
+    "schizo",
+    "spite",
+    "transylvania",
+    "vack",
+    "vegas"
+  ],
+  "notes": [
+    "Use in-jokes naturally; do not explain them",
+    "Prefer quoting phrases seen in memes/entities",
+    "Lean into terminally online cadence; short, punchy lines unless asked for depth"
+  ]
+}

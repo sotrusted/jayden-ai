@@ -8,12 +8,26 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 from tqdm import tqdm  # For progress bars
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.spite_ai.config import Config
+
+config = Config.from_env()
+
+CORPUS_PATH = config.CORPUS_PATH
+EMBEDDINGS_PATH = config.EMBEDDINGS_PATH
+METADATA_PATH = config.METADATA_PATH
+STYLE_PROFILE_PATH = config.STYLE_PROFILE_PATH
+SYSTEM_PROMPT_PATH = config.SYSTEM_PROMPT_PATH
+
 # Load spacy model
 print("Loading spaCy model...")
 nlp = spacy.load("en_core_web_sm")
 
 print("Loading corpus...")
-with open("spite_corpus.json") as f:
+with open(CORPUS_PATH) as f:
     corpus = json.load(f)
 print(f"Loaded {len(corpus)} documents")
 
@@ -115,12 +129,23 @@ def analyze_corpus_style():
         metrics['topics'].append(top_words)
 
     print("\nCalculating summary statistics...")
-    # Calculate summary statistics
+    # Calculate summary statistics. JSON can't serialize numpy types or NaN values,
+    # so we convert to primitive floats and fall back to None when data is missing.
+    def safe_stats(values):
+        if not values:
+            return None, None
+        mean = float(np.mean(values))
+        std = float(np.std(values))
+        return mean, std
+
+    avg_sentence_length, sentence_std = safe_stats(metrics['sentence_lengths'])
+    sentiment_mean, sentiment_std = safe_stats(metrics['sentiment_scores'])
+
     style_profile = {
-        'avg_sentence_length': np.mean(metrics['sentence_lengths']),
-        'sentence_std': np.std(metrics['sentence_lengths']),
-        'sentiment_mean': np.mean(metrics['sentiment_scores']),
-        'sentiment_std': np.std(metrics['sentiment_scores']),
+        'avg_sentence_length': avg_sentence_length,
+        'sentence_std': sentence_std,
+        'sentiment_mean': sentiment_mean,
+        'sentiment_std': sentiment_std,
         'common_phrases': metrics['common_phrases'].most_common(20),
         'response_styles': dict(metrics['response_styles']),
         'topics': metrics['topics']
@@ -131,17 +156,35 @@ def analyze_corpus_style():
 def generate_style_prompt(style_profile):
     """Convert style profile into a natural language prompt"""
     print("\nGenerating style prompt...")
+
+    avg_sentence_length = style_profile.get('avg_sentence_length')
+    sentence_std = style_profile.get('sentence_std')
+    sentiment_mean = style_profile.get('sentiment_mean')
+    sentiment_std = style_profile.get('sentiment_std')
+
+    def format_num(value):
+        return f"{value:.1f}" if value is not None else "N/A"
+
+    if sentiment_mean is None:
+        sentiment_descriptor = "unknown"
+    else:
+        sentiment_descriptor = (
+            "neutral" if abs(sentiment_mean) < 0.1
+            else "positive" if sentiment_mean > 0
+            else "negative"
+        )
+
     prompt = f"""You are a contributor to Spite Magazine. Your responses should naturally embody these characteristics:
 
 Voice & Tone:
-- Typical response length: {style_profile['avg_sentence_length']:.1f} words
-- Response length standard deviation: {style_profile['sentence_std']:.1f} words
-- Overall sentiment: {'neutral' if abs(style_profile['sentiment_mean']) < 0.1 else 'positive' if style_profile['sentiment_mean'] > 0 else 'negative'}
-- Sentiment standard deviation: {style_profile['sentiment_std']:.1f}
-- Common response styles: {', '.join(f'{k}: {v}' for k,v in style_profile['response_styles'].items() if v > len(corpus)/10)}
+- Typical response length: {format_num(avg_sentence_length)} words
+- Response length standard deviation: {format_num(sentence_std)} words
+- Overall sentiment: {sentiment_descriptor}
+- Sentiment standard deviation: {format_num(sentiment_std)}
+- Common response styles: {', '.join(f'{k}: {v}' for k, v in style_profile['response_styles'].items() if v > len(corpus)/10)}
 
 Frequent topics and themes:
-{', '.join(', '.join(topic) for topic in style_profile['topics'][:3])}
+{', '.join(', '.join(topic) for topic in style_profile['topics'])}
 
 Characteristic phrases:
 {', '.join(f'"{phrase}"' for phrase, _ in style_profile['common_phrases'])}
@@ -157,11 +200,13 @@ if __name__ == "__main__":
     
     print("\nSaving results...")
     # Save results
-    with open("spite_style_profile.json", "w") as f:
+    with open(STYLE_PROFILE_PATH, "w") as f:
         json.dump(style_profile, f, indent=2)
+    print(f"✓ Style profile saved to: {STYLE_PROFILE_PATH}")
     
-    with open("spite_system_prompt.txt", "w") as f:
+    with open(SYSTEM_PROMPT_PATH, "w") as f:
         f.write(prompt)
+    print(f"✓ System prompt saved to: {SYSTEM_PROMPT_PATH}")
     
     print("\n=== Analysis Complete! ===")
     print("\nGenerated system prompt:")
