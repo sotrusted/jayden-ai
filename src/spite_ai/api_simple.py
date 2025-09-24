@@ -148,19 +148,35 @@ def generate_stream_response_with_citations(stream_generator, citations: List[di
             citations_data = json.dumps({"citations": citations})
             yield f"data: {citations_data}\n\n"
         
+        # Validate stream generator
+        if stream_generator is None:
+            yield f"data: {json.dumps({'error': 'No stream generator provided'})}\n\n"
+            return
+            
+        logger.info("Starting to iterate over stream generator")
+        chunk_count = 0
+        
         # Then stream the content
         for chunk in stream_generator:
+            chunk_count += 1
+            logger.info(f"Processing chunk {chunk_count}, type: {type(chunk)}")
+            
             if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
                 delta = chunk.choices[0].delta
                 if hasattr(delta, 'content') and delta.content:
                     # Format as Server-Sent Events
                     data = json.dumps({"content": delta.content})
                     yield f"data: {data}\n\n"
+                    logger.info(f"Yielded content chunk: {delta.content[:50]}...")
+            else:
+                logger.warning(f"Chunk {chunk_count} has no valid content: {chunk}")
         
+        logger.info(f"Stream completed after {chunk_count} chunks")
         # Signal end of stream
         yield f"data: {json.dumps({'done': True})}\n\n"
         
     except Exception as e:
+        logger.error(f"Error in stream generator: {e}")
         error_data = json.dumps({"error": str(e)})
         yield f"data: {error_data}\n\n"
 
@@ -212,9 +228,11 @@ def chat_stream(req: ChatRequest):
             citations.append(citation)
         
         # Generate streaming response using the AI system
+        logger.info("Requesting streaming response from AI system")
         stream_generator = ai_system.generate_response(req.query, context, req.chat_history or "", stream=True)
         
         logger.info("Starting streaming response")
+        logger.info(f"Stream generator type: {type(stream_generator)}")
         
         # Return streaming response with citations
         return StreamingResponse(

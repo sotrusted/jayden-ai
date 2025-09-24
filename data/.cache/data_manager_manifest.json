@@ -1,0 +1,20 @@
+{
+  "input_hash": "1bc6ec5f6b2b7ea43b0a1a9981c47ab49fd9b2ae99fae4cb958fd3bea3ed4329",
+  "stages": {
+    "corpus": {
+      "signature": "f0f8fdafe0346ec92300c0e335906e1cbf1cd9f558097d6de1a9c1eed054314a",
+      "outputs": [
+        "data/spite_corpus.json",
+        "data/spite_metadata.json"
+      ],
+      "timestamp": 1758730513.9159136,
+      "details": {
+        "raw_entries": 60655,
+        "spam_removed": 142,
+        "near_duplicates_removed": 10886,
+        "final_entries": 49627,
+        "corpus_hash": "6f342a7e6425192fbd789379be87a86a7baf39a4bf07af206060fba14de32979"
+      }
+    }
+  }
+}

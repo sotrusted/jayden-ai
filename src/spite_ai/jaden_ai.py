@@ -442,7 +442,12 @@ Current query to answer (YOU ARE RESPONDING TO THIS): {query}
         # Handle response based on mode and streaming
         if stream and config.API_MODE:
             # Return the streaming generator for API mode
+            logger.info("Returning streaming generator")
             return result
+        elif stream and not config.API_MODE:
+            # LOCAL_MODE doesn't support streaming
+            logger.warning("Streaming requested but not available in LOCAL_MODE")
+            raise ValueError("Streaming is only available in API_MODE")
         
         generation_time = time.time() - start_time
         logger.info(f"Response generated in {generation_time:.2f} seconds")

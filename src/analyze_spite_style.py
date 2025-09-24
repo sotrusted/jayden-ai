@@ -1,16 +1,20 @@
 from collections import Counter
 import hashlib
-import spacy
 import json
-import numpy as np
-from textblob import TextBlob
+import os
 import re
-from sklearn.feature_extraction.text import CountVectorizer
+from pathlib import Path
+from typing import Iterable, List, Optional, Tuple
+
+import numpy as np
+import spacy
+from textblob import TextBlob
 from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm  # For progress bars
 
 import sys
-import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.spite_ai.config import Config
@@ -24,6 +28,8 @@ STYLE_PROFILE_PATH = config.STYLE_PROFILE_PATH
 SYSTEM_PROMPT_PATH = config.SYSTEM_PROMPT_PATH
 
 NEAR_DUP_THRESHOLD = 8
+
+_NLP = None
 
 # Shared spam filtering helpers (mirrors generate_lore_and_fewshots.py)
 def is_repetitive_spam(text, *, top_token_ratio=0.35, unique_ratio=0.45, bigram_ratio=0.25):
@@ -139,14 +145,21 @@ def dedupe_near_duplicates(corpus, *, threshold=8):
 
     return kept, removed
 
-# Load spacy model
-print("Loading spaCy model...")
-nlp = spacy.load("en_core_web_sm")
+def get_nlp() -> spacy.language.Language:
+    global _NLP
+    if _NLP is None:
+        print("Loading spaCy model...")
+        _NLP = spacy.load("en_core_web_sm")
+    return _NLP
 
-print("Loading corpus...")
-with open(CORPUS_PATH) as f:
-    corpus = json.load(f)
-print(f"Loaded {len(corpus)} documents")
+
+def load_corpus(path: Path | str = CORPUS_PATH) -> List[str]:
+    path = Path(path)
+    print(f"Loading corpus from {path}...")
+    with path.open() as handle:
+        data = json.load(handle)
+    print(f"Loaded {len(data)} documents")
+    return data
 
 def clean_text(text):
     # Remove URLs
@@ -155,8 +168,20 @@ def clean_text(text):
     text = re.sub(r'[^\w\s.,!?\'"-]', '', text)
     return text.strip()
 
-def analyze_corpus_style():
+def analyze_corpus_style(
+    corpus: Optional[Iterable[str]] = None,
+    *,
+    nlp: Optional[spacy.language.Language] = None,
+    near_dup_threshold: int = NEAR_DUP_THRESHOLD,
+) -> dict:
     print("\nAnalyzing corpus style...")
+
+    if corpus is None:
+        corpus = load_corpus()
+    if nlp is None:
+        nlp = get_nlp()
+
+    corpus = list(corpus)
 
     print("Filtering repetitive spam...")
     filtered_corpus, spam_filtered_posts = filter_spammy_docs(corpus)
@@ -168,7 +193,7 @@ def analyze_corpus_style():
     print(f"Corpus after spam filtering: {len(filtered_corpus)} documents")
 
     print("Removing near-duplicate posts...")
-    deduped_corpus, near_dup_removed = dedupe_near_duplicates(filtered_corpus, threshold=NEAR_DUP_THRESHOLD)
+    deduped_corpus, near_dup_removed = dedupe_near_duplicates(filtered_corpus, threshold=near_dup_threshold)
     if near_dup_removed:
         pct = near_dup_removed / max(len(filtered_corpus) + near_dup_removed, 1)
         print(f"Removed {near_dup_removed} near-duplicate posts ({pct:.1%})")
@@ -350,21 +375,37 @@ Remember: This is your natural voice - don't force it or reference these pattern
 
     return prompt
 
+def analyze_and_save(
+    corpus_path: Path | str = CORPUS_PATH,
+    style_profile_path: Path | str = STYLE_PROFILE_PATH,
+    system_prompt_path: Path | str = SYSTEM_PROMPT_PATH,
+    *,
+    nlp: Optional[spacy.language.Language] = None,
+    near_dup_threshold: int = NEAR_DUP_THRESHOLD,
+) -> Tuple[dict, str]:
+    corpus = load_corpus(corpus_path)
+    style_profile = analyze_corpus_style(corpus, nlp=nlp, near_dup_threshold=near_dup_threshold)
+    prompt = generate_style_prompt(style_profile)
+
+    style_profile_path = Path(style_profile_path)
+    system_prompt_path = Path(system_prompt_path)
+
+    print("\nSaving results...")
+    with style_profile_path.open("w") as f:
+        json.dump(style_profile, f, indent=2)
+    print(f"✓ Style profile saved to: {style_profile_path}")
+
+    with system_prompt_path.open("w") as f:
+        f.write(prompt)
+    print(f"✓ System prompt saved to: {system_prompt_path}")
+
+    return style_profile, prompt
+
+
 if __name__ == "__main__":
     print("\n=== Starting Spite Style Analysis ===\n")
-    style_profile = analyze_corpus_style()
-    prompt = generate_style_prompt(style_profile)
-    
-    print("\nSaving results...")
-    # Save results
-    with open(STYLE_PROFILE_PATH, "w") as f:
-        json.dump(style_profile, f, indent=2)
-    print(f"✓ Style profile saved to: {STYLE_PROFILE_PATH}")
-    
-    with open(SYSTEM_PROMPT_PATH, "w") as f:
-        f.write(prompt)
-    print(f"✓ System prompt saved to: {SYSTEM_PROMPT_PATH}")
-    
+    profile, prompt = analyze_and_save()
+
     print("\n=== Analysis Complete! ===")
     print("\nGenerated system prompt:")
     print("-" * 50)

@@ -19,3 +19,4 @@ wheels/
 data/spite_corpus.json
 data/spite_metadata.json
 data/spite_embeddings.npy
+.uv-cache/

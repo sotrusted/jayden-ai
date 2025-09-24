@@ -1,0 +1,15 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+data/spite_corpus.json
+data/spite_metadata.json
+data/spite_embeddings.npy
+
+.venv/
+
+.uv-cache/
+
+.gitignore
+.vscode/
+.cursorignore
+.cursorrules
+.cursorignore
+.git

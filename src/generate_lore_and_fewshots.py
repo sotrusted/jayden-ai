@@ -503,6 +503,94 @@ def save_fewshots(pairs: List[Tuple[str, str]], path: str) -> None:
             f.write(f"A: {a}\n\n")
 
 
+def generate_lore_from_corpus(
+    corpus: List[str],
+    *,
+    sample: int = 4000,
+    fewshots: int = 5,
+    rag_fewshots: bool = False,
+    embeddings_path: str = "spite_embeddings.npy",
+    min_df: int = 5,
+    max_df: float = 0.1,
+    max_entity_doc_ratio: float = 0.1,
+    skip_spam_filter: bool = False,
+    near_dup_threshold: int = 8,
+) -> Tuple[Dict, List[Tuple[str, str]], Dict[str, int]]:
+    """Mirror the CLI pipeline but operate on an in-memory corpus."""
+
+    work_corpus = list(corpus)
+    stats_summary = {
+        "initial_corpus_size": len(work_corpus),
+        "spam_filtered": 0,
+        "near_duplicates_removed": 0,
+    }
+
+    if not skip_spam_filter:
+        print("Filtering repetitive spam...")
+        filtered_corpus, removed = filter_spammy_docs(work_corpus)
+        if removed:
+            pct = removed / max(len(work_corpus), 1)
+            print(f"Filtered {removed} spam-like posts ({pct:.1%}).")
+        else:
+            print("No spam-like posts filtered.")
+        work_corpus = filtered_corpus
+        stats_summary["spam_filtered"] = removed
+        print(f"Corpus after filtering: {len(work_corpus)} posts")
+
+    if near_dup_threshold > 0:
+        print("Removing near-duplicate posts...")
+        work_corpus, removed = dedupe_near_duplicates(work_corpus, threshold=near_dup_threshold)
+        if removed:
+            pct = removed / max(len(work_corpus) + removed, 1)
+            print(f"Removed {removed} near-duplicate posts ({pct:.1%}).")
+        else:
+            print("No near-duplicates detected.")
+        print(f"Corpus after dedupe: {len(work_corpus)} posts")
+        stats_summary["near_duplicates_removed"] = removed
+
+    print("Computing style stats...")
+    stats = basic_stats(work_corpus, sample)
+    print("Stats:", stats)
+
+    print("Running sentiment analysis (sampled)...")
+    sentiment = compute_sentiment(work_corpus, sample)
+    print("Sentiment:", sentiment)
+
+    print("Mining phrases...")
+    phrases = mine_phrases(work_corpus, min_df=min_df, max_df=max_df)
+    print(f"Top phrases: {phrases[:10]}")
+
+    print("Mining entities...")
+    entities = mine_entities(work_corpus, max_doc_ratio=max_entity_doc_ratio)
+    print(f"Top entities: {entities[:10]}")
+
+    print("Building lorebook...")
+    lore = build_lorebook(stats, sentiment, entities, phrases)
+
+    fewshot_pairs: List[Tuple[str, str]] = []
+    if fewshots > 0:
+        print("Generating few-shots...")
+        if rag_fewshots:
+            model, index = init_rag(embeddings_path)
+            if model is None or index is None:
+                print("RAG not available (missing embeddings). Falling back to heuristic few-shots.")
+                memes_only = [p for p, _ in phrases]
+                fewshot_pairs = generate_fewshots(work_corpus, entities, memes_only, fewshots)
+            else:
+                clean_entities = [e for e, _ in entities if e.lower() not in STOPWORDS and e.lower() not in BAN_TERMS][:50]
+                clean_memes = [p for p, _ in phrases if all(w not in STOPWORDS and w not in BAN_TERMS for w in p.split())][:80]
+                terms = clean_entities + clean_memes
+                random.shuffle(terms)
+                fewshot_pairs = generate_fewshots_rag(work_corpus, model, index, terms, fewshots)
+        else:
+            memes_only = [p for p, _ in phrases]
+            fewshot_pairs = generate_fewshots(work_corpus, entities, memes_only, fewshots)
+        print(f"Generated {len(fewshot_pairs)} few-shots")
+
+    stats_summary["final_corpus_size"] = len(work_corpus)
+    return lore, fewshot_pairs, stats_summary
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate Spite lorebook and few-shots")
     parser.add_argument("--corpus", default=DEFAULT_CORPUS_PATH)
@@ -545,47 +633,24 @@ def main():
             print("No near-duplicates detected.")
         print(f"Corpus after dedupe: {len(corpus)} posts")
 
-    print("Computing style stats...")
-    stats = basic_stats(corpus, args.sample)
-    print("Stats:", stats)
-
-    print("Running sentiment analysis (sampled)...")
-    sentiment = compute_sentiment(corpus, args.sample)
-    print("Sentiment:", sentiment)
-
-    print("Mining phrases...")
-    phrases = mine_phrases(corpus, min_df=args.min_df, max_df=args.max_df)
-    print(f"Top phrases: {phrases[:10]}")
-
-    print("Mining entities...")
-    entities = mine_entities(corpus, max_doc_ratio=args.max_entity_doc_ratio)
-    print(f"Top entities: {entities[:10]}")
-
-    print("Building lorebook...")
-    lore = build_lorebook(stats, sentiment, entities, phrases)
+    lore, pairs, _ = generate_lore_from_corpus(
+        corpus,
+        sample=args.sample,
+        fewshots=args.fewshots,
+        rag_fewshots=args.rag_fewshots,
+        embeddings_path=args.embeddings,
+        min_df=args.min_df,
+        max_df=args.max_df,
+        max_entity_doc_ratio=args.max_entity_doc_ratio,
+        skip_spam_filter=args.skip_spam_filter,
+        near_dup_threshold=args.near_dup_threshold,
+    )
 
     with open(args.out_lore, "w", encoding="utf-8") as f:
         json.dump(lore, f, indent=2)
     print(f"Saved lorebook to {args.out_lore}")
 
     if args.fewshots > 0:
-        print("Generating few-shots...")
-        if args.rag_fewshots:
-            model, index = init_rag(args.embeddings)
-            if model is None or index is None:
-                print("RAG not available (missing embeddings). Falling back to heuristic few-shots.")
-                memes_only = [p for p, _ in phrases]
-                pairs = generate_fewshots(corpus, entities, memes_only, args.fewshots)
-            else:
-                # Build higher-quality term list: entities + memes filtered by stopwords/banlist
-                clean_entities = [e for e, _ in entities if e.lower() not in STOPWORDS and e.lower() not in BAN_TERMS][:50]
-                clean_memes = [p for p, _ in phrases if all(w not in STOPWORDS and w not in BAN_TERMS for w in p.split())][:80]
-                terms = clean_entities + clean_memes
-                random.shuffle(terms)
-                pairs = generate_fewshots_rag(corpus, model, index, terms, args.fewshots)
-        else:
-            memes_only = [p for p, _ in phrases]
-            pairs = generate_fewshots(corpus, entities, memes_only, args.fewshots)
         save_fewshots(pairs, args.out_fewshots)
         print(f"Saved {len(pairs)} few-shots to {args.out_fewshots}")
 
