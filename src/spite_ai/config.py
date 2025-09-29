@@ -40,7 +40,7 @@ class Config:
     # Search parameters
     DEFAULT_K = 8
     SIMILARITY_THRESHOLD = 0.65
-    MAX_CONTEXT_PASSAGES = 5
+    MAX_CONTEXT_PASSAGES = 8
     
     # Response generation
     MAX_CHAT_HISTORY_LENGTH = 3000
@@ -70,12 +70,16 @@ class Config:
     LOREBOOK_PATH = "data/spite_lorebook.json"
     
     # Logging
-    LOG_LEVEL = "INFO"
+    LOG_LEVEL = "DEBUG"
     LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+    LOG_FILE = "logs/spite_ai.log"
     
     # Performance
     ENABLE_MEMORY_OPTIMIZATION = True
     CACHE_EMBEDDINGS = True
+
+    # Blacklisted posts 
+    BLACKLISTED_POSTS = [17586]
     
     @classmethod
     def from_env(cls) -> 'Config':
@@ -100,6 +104,7 @@ class Config:
         except ValueError:
             pass
         config.DEFAULT_K = int(os.getenv("SPITE_DEFAULT_K", config.DEFAULT_K))
+        config.MAX_CONTEXT_PASSAGES = int(os.getenv("SPITE_MAX_CONTEXT_PASSAGES", config.MAX_CONTEXT_PASSAGES))
         config.SIMILARITY_THRESHOLD = float(os.getenv("SPITE_SIMILARITY_THRESHOLD", config.SIMILARITY_THRESHOLD))
         config.LOG_LEVEL = os.getenv("SPITE_LOG_LEVEL", config.LOG_LEVEL)
         config.USE_CITATIONS = os.getenv("SPITE_USE_CITATIONS", str(config.USE_CITATIONS)).lower() in {"1","true","yes"}

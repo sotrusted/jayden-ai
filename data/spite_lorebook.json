@@ -1,14 +1,14 @@
 {
   "style": {
-    "avg_sentence_length": 8.00617755699911,
-    "sentence_std": 10.782794337469923,
+    "avg_sentence_length": 8.077041705779804,
+    "sentence_std": 9.78155700222073,
     "sentiment_mean": -0.40714367979764937,
     "sentiment_std": 0.8731193940803909,
     "response_styles": {
-      "brief": 2741,
-      "ironic": 153,
-      "questioning": 458,
-      "emphatic": 163
+      "questioning": 439,
+      "brief": 2728,
+      "ironic": 142,
+      "emphatic": 171
     }
   },
   "entities": [
@@ -18,7 +18,7 @@
     ],
     [
       "James",
-      1416
+      1417
     ],
     [
       "Aaronson",
@@ -106,7 +106,7 @@
     ],
     [
       "Jewish",
-      260
+      261
     ],
     [
       "Billy",
@@ -189,11 +189,11 @@
       171
     ],
     [
-      "Does",
-      168
+      "Jews",
+      169
     ],
     [
-      "Jews",
+      "Does",
       168
     ],
     [
@@ -210,7 +210,7 @@
     ],
     [
       "Reading",
-      152
+      153
     ],
     [
       "Girl",
@@ -230,7 +230,7 @@
     ],
     [
       "Jesus",
-      141
+      142
     ],
     [
       "Art",

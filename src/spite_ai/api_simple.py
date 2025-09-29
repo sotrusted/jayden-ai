@@ -7,8 +7,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Force reconfiguration even if logging was already configured
+)
 logger = logging.getLogger(__name__)
+
+# Test log message to verify logging is working
+logger.info("FastAPI application starting up - logging configured")
 
 app = FastAPI(title="Spite AI API", version="0.1.0")
 

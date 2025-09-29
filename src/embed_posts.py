@@ -67,6 +67,7 @@ def flatten_posts(posts: Iterable[dict]) -> Tuple[List[str], List[dict]]:
                     "type": "comment",
                     "id": obj_id,
                     "name": comment.get("name", ""),
+                    "content": comment.get("content", ""),
                     "post_id": comment.get("post"),
                 }
             )

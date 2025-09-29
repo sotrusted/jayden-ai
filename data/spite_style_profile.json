@@ -1,8 +1,8 @@
 {
-  "avg_sentence_length": 12.14886440842473,
-  "sentence_std": 13.86870323521289,
-  "sentiment_mean": 0.033035356472493164,
-  "sentiment_std": 0.28055923512882724,
+  "avg_sentence_length": 12.149618073798651,
+  "sentence_std": 13.866872587308833,
+  "sentiment_mean": 0.03301225008621879,
+  "sentiment_std": 0.28056982560067273,
   "common_phrases": [
     [
       "james aaronson",
@@ -18,11 +18,11 @@
     ],
     [
       "feel like",
-      483
+      484
     ],
     [
       "dimes square",
-      349
+      350
     ],
     [
       "new york",
@@ -46,7 +46,7 @@
     ],
     [
       "look like",
-      195
+      196
     ],
     [
       "spite janitor",
@@ -86,10 +86,10 @@
     ]
   ],
   "response_styles": {
-    "brief": 32520,
-    "questioning": 5744,
-    "ironic": 1747,
-    "emphatic": 2013
+    "brief": 32541,
+    "questioning": 5748,
+    "ironic": 1748,
+    "emphatic": 2015
   },
   "topics": [
     [
@@ -111,30 +111,30 @@
       "peter",
       "fat",
       "sorry",
-      "support",
-      "vack"
+      "hate",
+      "support"
     ],
     [
       "like",
       "just",
       "time",
       "said",
+      "got",
       "way",
       "life",
-      "got",
-      "night",
-      "world"
+      "love",
+      "day"
     ],
     [
       "james",
+      "want",
       "aaronson",
-      "girl",
       "josh",
-      "man",
       "god",
+      "going",
       "oh",
-      "guy",
-      "going"
+      "girl",
+      "dont"
     ],
     [
       "like",
@@ -142,17 +142,17 @@
       "im",
       "dont",
       "know",
-      "want",
+      "people",
       "fuck",
       "fucking",
-      "people"
+      "need"
     ]
   ],
-  "initial_corpus_size": 60618,
-  "posts_after_spam_filter": 60476,
-  "posts_after_dedupe": 49595,
-  "spam_filtered_posts": 142,
-  "near_duplicate_removed_posts": 10881,
+  "initial_corpus_size": 49627,
+  "posts_after_spam_filter": 49627,
+  "posts_after_dedupe": 49627,
+  "spam_filtered_posts": 0,
+  "near_duplicate_removed_posts": 0,
   "skipped_long_posts": 0,
-  "total_posts_analyzed": 48213
+  "total_posts_analyzed": 48244
 }

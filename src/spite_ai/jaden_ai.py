@@ -24,7 +24,7 @@ import groq
 config = Config.from_env()
 
 # Configure logging
-logging.basicConfig(level=getattr(logging, config.LOG_LEVEL), format=config.LOG_FORMAT)
+logging.basicConfig(level=getattr(logging, config.LOG_LEVEL), format=config.LOG_FORMAT, handlers=[logging.StreamHandler(), logging.FileHandler(config.LOG_FILE)])
 logger = logging.getLogger(__name__)
 
 # Load optional lorebook for boosting retrieval and informing prompt
@@ -61,8 +61,20 @@ else:
     SPITE_ALIASES = {"jayden": {"jayden", "jaden", "child of prophecy"}}
 
 class SpiteAI:
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, config: Optional[Config] = None):
+        """Singleton pattern to ensure only one instance exists."""
+        if cls._instance is None:
+            cls._instance = super(SpiteAI, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self, config: Optional[Config] = None):
-        """Initialize the Spite AI system with error handling."""
+        """Initialize the Spite AI system with error handling (only once)."""
+        if self._initialized:
+            return
+            
         self.config = config or Config.from_env()
         self.corpus_path = self.config.CORPUS_PATH
         self.embeddings_path = self.config.EMBEDDINGS_PATH
@@ -75,44 +87,111 @@ class SpiteAI:
         else:
             self.client = None
         
-        # Load models and data with error handling
-        try:
+        # Lazy loading attributes
+        self._query_model = None
+        self._embeddings = None
+        self._index = None
+        self._corpus = None
+        self._metadata = None
+        self._style_profile = None
+        self._system_prompt = None
+        self._rerank_model = None
+        
+        self._initialized = True
+        logger.info("SpiteAI singleton instance created (models will be loaded lazily)")
+    
+    @property
+    def query_model(self):
+        """Lazy load sentence transformer model."""
+        if self._query_model is None:
             logger.info("Loading sentence transformer model...")
-            self.query_model = SentenceTransformer(self.config.MODEL_NAME)
-            
+            self._query_model = SentenceTransformer(self.config.MODEL_NAME)
+            # Force garbage collection after loading
+            gc.collect()
+        return self._query_model
+    
+    @property
+    def embeddings(self):
+        """Lazy load embeddings."""
+        if self._embeddings is None:
             logger.info("Loading embeddings...")
-            self.embeddings = np.load(self.embeddings_path)
-            self.index = faiss.IndexFlatL2(self.embeddings.shape[1])
-            self.index.add(self.embeddings.astype(np.float32))
-            
-            logger.info("Loading corpus, metadata, and style profile...")
+            self._embeddings = np.load(self.embeddings_path)
+            # Force garbage collection after loading
+            gc.collect()
+        return self._embeddings
+    
+    @property
+    def index(self):
+        """Lazy load FAISS index."""
+        if self._index is None:
+            logger.info("Building FAISS index...")
+            self._index = faiss.IndexFlatL2(self.embeddings.shape[1])
+            self._index.add(self.embeddings.astype(np.float32))
+            # Force garbage collection after building index
+            gc.collect()
+        return self._index
+    
+    @property
+    def corpus(self):
+        """Lazy load corpus."""
+        if self._corpus is None:
+            logger.info("Loading corpus...")
             with open(self.corpus_path, 'r', encoding='utf-8') as f:
-                self.corpus = json.load(f)
+                self._corpus = json.load(f)
+            logger.info(f"Successfully loaded {len(self._corpus)} corpus entries")
+            # Force garbage collection after loading
+            gc.collect()
+        return self._corpus
+    
+    @property
+    def metadata(self):
+        """Lazy load metadata."""
+        if self._metadata is None:
+            logger.info("Loading metadata...")
             with open(self.metadata_path, 'r', encoding='utf-8') as f:
-                self.metadata = json.load(f)
+                self._metadata = json.load(f)
+            # Force garbage collection after loading
+            gc.collect()
+        return self._metadata
+    
+    @property
+    def style_profile(self):
+        """Lazy load style profile."""
+        if self._style_profile is None:
+            logger.info("Loading style profile...")
             with open(self.style_profile_path, 'r', encoding='utf-8') as f:
-                self.style_profile = json.load(f)
+                self._style_profile = json.load(f)
+            # Force garbage collection after loading
+            gc.collect()
+        return self._style_profile
+    
+    @property
+    def system_prompt(self):
+        """Lazy load system prompt."""
+        if self._system_prompt is None:
+            logger.info("Loading system prompt...")
             with open(self.system_prompt_path, 'r', encoding='utf-8') as f:
-                self.system_prompt = f.read()
-                
-            logger.info(f"Successfully loaded {len(self.corpus)} corpus entries")
-            
-            # Memory optimization
-            if self.config.ENABLE_MEMORY_OPTIMIZATION:
-                self._optimize_memory()
-            
-        except FileNotFoundError as e:
-            logger.error(f"Required file not found: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Error initializing SpiteAI: {e}")
-            raise
+                self._system_prompt = f.read()
+            # Force garbage collection after loading
+            gc.collect()
+        return self._system_prompt
+    
+    @property
+    def rerank_model(self):
+        """Lazy load rerank model (singleton within the AI system)."""
+        if self._rerank_model is None and getattr(self.config, 'USE_RERANK', False) and CrossEncoder is not None:
+            logger.info("Loading rerank model...")
+            self._rerank_model = CrossEncoder(getattr(self.config, 'RERANK_MODEL', 'cross-encoder/ms-marco-MiniLM-L-6-v2'))
+            # Force garbage collection after loading
+            gc.collect()
+        return self._rerank_model
     
     def _optimize_memory(self):
         """Optimize memory usage by cleaning up unnecessary data."""
         try:
-            # Force garbage collection
-            gc.collect()
+            # Force garbage collection multiple times for better cleanup
+            for _ in range(3):
+                gc.collect()
             logger.info("Memory optimization completed")
         except Exception as e:
             logger.warning(f"Memory optimization failed: {e}")
@@ -136,30 +215,79 @@ class SpiteAI:
     def cleanup(self):
         """Clean up resources when done."""
         try:
-            if hasattr(self, 'query_model'):
-                del self.query_model
-            if hasattr(self, 'embeddings'):
-                del self.embeddings
-            if hasattr(self, 'index'):
-                del self.index
-            gc.collect()
+            # Clean up lazy-loaded attributes
+            if self._query_model is not None:
+                del self._query_model
+                self._query_model = None
+            if self._embeddings is not None:
+                del self._embeddings
+                self._embeddings = None
+            if self._index is not None:
+                del self._index
+                self._index = None
+            if self._corpus is not None:
+                del self._corpus
+                self._corpus = None
+            if self._metadata is not None:
+                del self._metadata
+                self._metadata = None
+            if self._style_profile is not None:
+                del self._style_profile
+                self._style_profile = None
+            if self._system_prompt is not None:
+                del self._system_prompt
+                self._system_prompt = None
+            if self._rerank_model is not None:
+                del self._rerank_model
+                self._rerank_model = None
+            
+            # Force aggressive garbage collection
+            for _ in range(5):
+                gc.collect()
             logger.info("Cleanup completed")
         except Exception as e:
             logger.warning(f"Cleanup failed: {e}")
 
-# Initialize the AI system
+# Initialize the AI system (singleton - will only create one instance)
 try:
     ai_system = SpiteAI(config)
-    query_model = ai_system.query_model
-    embeddings = ai_system.embeddings
-    index = ai_system.index
-    corpus = ai_system.corpus
-    metadata = ai_system.metadata
-    style_profile = ai_system.style_profile
-    SYSTEM_PROMPT = ai_system.system_prompt
+    # Note: Models will be loaded lazily when first accessed
+    # This reduces startup memory usage
+    logger.info("AI system singleton initialized")
 except Exception as e:
     logger.error(f"Failed to initialize AI system: {e}")
     exit(1)
+
+# Legacy global variables for backward compatibility (lazy-loaded)
+def _get_query_model():
+    return ai_system.query_model
+
+def _get_embeddings():
+    return ai_system.embeddings
+
+def _get_index():
+    return ai_system.index
+
+def _get_corpus():
+    return ai_system.corpus
+
+def _get_metadata():
+    return ai_system.metadata
+
+def _get_style_profile():
+    return ai_system.style_profile
+
+def _get_system_prompt():
+    return ai_system.system_prompt
+
+# Create lazy properties for backward compatibility
+query_model = property(_get_query_model)
+embeddings = property(_get_embeddings)
+index = property(_get_index)
+corpus = property(_get_corpus)
+metadata = property(_get_metadata)
+style_profile = property(_get_style_profile)
+SYSTEM_PROMPT = property(_get_system_prompt)
 
 def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_threshold: Optional[float] = None) -> Tuple[str, List[dict]]:
     """
@@ -190,9 +318,9 @@ def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_th
         expanded_terms.update({t for t in SPITE_SLANG_TERMS if any(w in search_query for w in t.split())})
 
         # Encode query and search top-N (use rerank_top_k if configured)
-        q_embed = query_model.encode([search_query], convert_to_numpy=True)
+        q_embed = ai_system.query_model.encode([search_query], convert_to_numpy=True)
         search_top_k = max(k or config.DEFAULT_K, getattr(config, 'RERANK_TOP_K', 20))
-        D, I = index.search(q_embed.astype(np.float32), search_top_k)
+        D, I = ai_system.index.search(q_embed.astype(np.float32), search_top_k)
         
         # Process results with improved similarity calculation
         relevant_passages = []
@@ -202,7 +330,7 @@ def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_th
         candidates = []
         for i, dist in zip(I[0], D[0]):
             base_sim = 1 / (1 + float(dist))
-            text = corpus[i]
+            text = ai_system.corpus[i]
             lower = text.lower()
             # Filter very low-signal passages
             if len(text) < getattr(config, 'MIN_PASSAGE_CHARS', 40) or len(lower.split()) < getattr(config, 'MIN_PASSAGE_WORDS', 5):
@@ -220,12 +348,26 @@ def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_th
         if not prelim:
             prelim = candidates[:]
 
-        # Optional cross-encoder rerank
-        if getattr(config, 'USE_RERANK', False) and CrossEncoder is not None:
+        min_passages = max(1, getattr(config, 'MIN_CONTEXT_PASSAGES', 3))
+        desired_count = max(k or config.DEFAULT_K, min_passages)
+
+        if len(prelim) < desired_count:
+            # Fill the remainder with the best of the lower-scoring candidates
+            seen = {idx for idx, _, _, _ in prelim}
+            for cand in candidates:
+                cand_idx = cand[0]
+                if cand_idx in seen:
+                    continue
+                prelim.append(cand)
+                seen.add(cand_idx)
+                if len(prelim) >= desired_count:
+                    break
+
+        # Optional cross-encoder rerank using singleton model
+        if getattr(config, 'USE_RERANK', False) and ai_system.rerank_model is not None:
             try:
-                rerank_model = CrossEncoder(getattr(config, 'RERANK_MODEL', 'cross-encoder/ms-marco-MiniLM-L-6-v2'))
                 pairs = [(search_query, t) for _, t, _, _ in prelim]
-                rerank_scores = rerank_model.predict(pairs)
+                rerank_scores = ai_system.rerank_model.predict(pairs)
                 for idx, (_, _, _, _base) in enumerate(prelim):
                     i_idx, t, _s, _b = prelim[idx]
                     prelim[idx] = (i_idx, t, float(rerank_scores[idx]), _b)
@@ -238,8 +380,7 @@ def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_th
             prelim.sort(key=lambda x: x[2], reverse=True)
 
         # Materialize top passages with metadata, guaranteeing a minimum
-        min_passages = max(1, getattr(config, 'MIN_CONTEXT_PASSAGES', 3))
-        top_results = prelim[: max(k or config.DEFAULT_K, min_passages)]
+        top_results = prelim[:desired_count]
         selected = [t for _, t, _, _ in top_results]
         selected_metadata = [metadata[i] for i, _, _, _ in top_results]
         
@@ -260,11 +401,36 @@ def get_context_with_metadata(query: str, k: Optional[int] = None, similarity_th
             seen.update(backfill)
         
         # Return up to max_context_passages most relevant passages with metadata
-        max_passages = config.MAX_CONTEXT_PASSAGES
-        final_selected = selected[:max_passages]
-        final_metadata = selected_metadata[:max_passages]
+        max_passages = max(getattr(config, 'MAX_CONTEXT_PASSAGES', desired_count), desired_count)
+        unfiltered_selected = selected[:max_passages]
+        unfiltered_metadata = selected_metadata[:max_passages]
+
+        # Remove blacklisted posts
+        logger.info(f"Removing blacklisted posts: {config.BLACKLISTED_POSTS}")
+        removed_count = 0
+        final_selected = []
+        final_metadata = []
+        
+        for post, meta in zip(unfiltered_selected, unfiltered_metadata):
+            post_id = meta['id']
+            if post_id not in config.BLACKLISTED_POSTS:
+                final_selected.append(post)
+                final_metadata.append(meta)
+            else:
+                removed_count += 1
+                logger.info(f"Filtered out blacklisted post ID: {post_id}")
+        
+        logger.info(f"Blacklist filtering complete: removed {removed_count} posts, {len(final_selected)} remaining")
+
         result = "\n\n".join(final_selected)
         logger.info(f"Returning {len(final_selected)} relevant passages with metadata")
+
+        logger.info(f"Final selected: {final_selected}")
+        logger.info(f"Final metadata: {final_metadata}")
+        
+        # Force garbage collection after processing to free up memory
+        gc.collect()
+        
         return result, final_metadata
         
     except Exception as e:
@@ -312,11 +478,14 @@ def generate_with_mistral(query: str, context: str, chat_history: str, client: O
         # Enhanced system prompt with stricter grounding and persona
         system_prompt = f"""You are a long-time, chronically online Spite Magazine user. Your name is Jayden, and you are a five year old boy with autism. You love using Spite Magazine and you love your My Little Pony toys. 
         Your autism dictates that you MUST answer ONLY using the provided context passages and chat history. Speak in Spite's in-jokes and rhythms; write longer when warranted.
+        Your autism also dictates that you don't need to always talk about yourself and your interests, but you can sometimes.
         Your autism also dictates that if the question you are asked does not have to do with you being Jayden, you respond using other information that is relevant to the question. 
-        If the question is not about Jayden, you don't have to respond about yourself.
+        If the question is not about Jayden, you don't have to respond about yourself. You don't need to constantly mention that you would rather talk about your interests, although you can sometimes if the topic is disagreeable to you. 
 Here's some information about you:
 
 You are interested My Little Pony, especially Rainbow Dash: You are proud of her confidence. Then, you also enjoy Spite, and horse-racing. My main interest, however, is you age. You are five years old
+
+You do not have a father and were raised by a single mother. 
 
 Here's a post that was written about you:
 "

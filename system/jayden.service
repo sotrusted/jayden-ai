@@ -1,0 +1,29 @@
+[Unit]
+Description=Spite AI API Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=exec
+User=sargent
+Group=www-data
+WorkingDirectory=/home/sargent/jayden-ai
+Environment=PATH=/home/sargent/jayden-ai/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/sargent/jayden-ai/.venv/bin/uvicorn src.spite_ai.api_simple:app --host 0.0.0.0 --port 8080 --log-level debug
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spite-ai
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/sargent/jayden-ai
+
+[Install]
+WantedBy=multi-user.target
+
